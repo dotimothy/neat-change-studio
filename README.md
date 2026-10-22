@@ -60,10 +60,17 @@ They are kept in one **models directory**, shared by every install and left alon
 
 ```bash
 webapp/run.sh --fetch bf16        # or w8a16, or all
-webapp/run.sh --list-hub          # what Hugging Face has, and what is here
+webapp/run.sh --list-hub          # what Hugging Face has, what is here, and the space used
+webapp/run.sh --verify all        # check the models here against their published SHA-256
+webapp/run.sh --delete w8a16      # delete a model (not the one the running demo has loaded)
 ```
 
-The web demo can also download them: **Settings → Model**, then **Download**; the panel shows which folder they go to. Every download is checked against its SHA-256. To compile the model yourself, see [Building it from scratch](#building-it-from-scratch).
+The web demo manages them too, under **Settings → Model**, like Neat GenAI Studio's model manager:
+- **Download:** fetches a model, with progress, cancel and resume. Every download is checked against its SHA-256.
+- **Verify:** checks a model against its published SHA-256 (about a second on the board).
+- **Re-download:** fetches a fresh copy. The old file stays in use until the new one has arrived and passed its check, so a failed re-download loses nothing.
+- **Delete:** removes the model after asking. The loaded model can't be deleted; load another one first.
+- **Storage:** shows how many models are on the board, the space they use, the free space, and which folder they are in. To compile the model yourself, see [Building it from scratch](#building-it-from-scratch).
 
 ### From a host instead: deploy.sh
 
@@ -209,11 +216,14 @@ The `onnx` backend uses `build/onnx/cyws_fused.onnx`, which `model/fetch_upstrea
 | `--hub-repo REPO` | Hugging Face repository to list models from (default `dotimothy/sima-cyws`; `''` turns the catalog off) |
 | `--fetch NAME…` | download these models into `--models` and exit (`all` for every one) |
 | `--list-hub` | list the models on Hugging Face, and which are here, and exit |
+| `--verify NAME…` | check these models against their published SHA-256 and exit (`all` for every one here) |
+| `--delete NAME…` | delete these models from `--models` and exit (refused for the model the running demo has loaded) |
 | `--no-https` | plain HTTP only |
 
 **Models from Hugging Face:**
 - **Settings → Model** lists the models on [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws), as Neat GenAI Studio and Decision Studio do. A model that isn't on the board shows a **Download** button.
-- A download fetches the model into `models/`, with progress, cancel and resume, and checks its SHA-256 before the model can be loaded.
+- A download fetches the model into the models directory, with progress, cancel and resume, and checks its SHA-256 before the model can be loaded.
+- A model on the board has **Verify**, **Re-download** and **Delete** buttons, and a storage bar shows the space the models use.
 - On a fresh board, the first model downloaded loads by itself.
 
 The right-hand panel collapses with the round button on its edge, and the header's Settings button opens it at Settings.

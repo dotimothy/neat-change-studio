@@ -221,7 +221,7 @@
           </div>
         </div>
         <p class="small">testCYWS is the author's private set and is not published, so bring your own pairs in this layout: <code>images/&lt;id&gt;_ref.jpg</code> (before), <code>images/&lt;id&gt;_cap.jpg</code> (after) and, for metrics, <code>masks/&lt;id&gt;.jpg</code>. The default folder is <code>data/testCYWS</code>; set <code>CYWS_DATA</code> to use another one, and run the whole set with <code>./run.sh --mode dataset</code>.</p>
-        <p class="small">Only one app may use the MLA at a time, so stop other demos first. The web demo can also download models itself: Settings → Model, then Download. Every download is checked against its SHA-256.</p>
+        <p class="small">Only one app may use the MLA at a time, so stop other demos first. The web demo can also download, verify, re-download and delete models itself, under Settings → Model. Every download is checked against its SHA-256.</p>
       </div>
     </div>
   </div>
@@ -468,7 +468,7 @@
         <div class="feature-text">
           <p class="card-title">Models</p>
           <h3>A Hugging Face Catalog in Settings</h3>
-          <p>Settings → Model lists the compiled models on <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a>. A model that is not on the board downloads with progress, cancel and resume, and its SHA-256 is checked before it can be loaded. Picking one switches the MLA over.</p>
+          <p>Settings → Model lists the compiled models on <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a>. A model that is not on the board downloads with progress, cancel and resume, and its SHA-256 is checked before it can be loaded. Picking one switches the MLA over. Models on the board can be verified, re-downloaded or deleted, and a storage bar shows the space they use.</p>
           <p>On a fresh board, the first model downloaded loads by itself.</p>
         </div>
       </article>

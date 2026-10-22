@@ -64,6 +64,14 @@ MODELS = OrderedDict([
     ("bf16", {"file": "cyws_bf16_mpk.tar.gz", "label": "bf16 · Most Faithful"}),
     ("w8a16", {"file": "cyws_w8a16_mpk.tar.gz", "label": "w8a16 · Faster"}),
 ])
+def models_storage(models_dir: Path) -> dict:
+    """What the models take on disk: finished MPKs and stopped downloads."""
+    files = sorted(Path(models_dir).glob("*_mpk.tar.gz")) if Path(models_dir).is_dir() else []
+    parts = sorted(Path(models_dir).glob("*_mpk.tar.gz.part")) if Path(models_dir).is_dir() else []
+    return {"used_bytes": sum(p.stat().st_size for p in files + parts), "model_count": len(files),
+            "partial_count": len(parts)}
+
+
 def _free_bytes(path: Path) -> int:
     """Free space where `path` is, or would be once created."""
     path = Path(path)
@@ -192,6 +200,7 @@ class Hub:
         self._error: str | None = None
         self._job: dict | None = None
         self._failed: dict[str, str] = {}
+        self._verified: dict[str, tuple] = {}           # name -> (size, mtime_ns, sum matched)
         self.quiet = False                              # the --fetch command reports instead
 
     def url(self, path: str) -> str:
@@ -244,22 +253,37 @@ class Hub:
                 progress = {"fraction": round(job["done"] / f["bytes"], 4), "done_bytes": job["done"],
                             "total_bytes": f["bytes"], "bytes_per_second": int(rate),
                             "seconds_left": int((f["bytes"] - job["done"]) / rate) if rate else None}
-            on_board = path.is_file() and path.stat().st_size == f["bytes"]
+            st = path.stat() if path.is_file() else None
+            on_board = st is not None and st.st_size == f["bytes"]
+            mark = self._verified.get(name)
+            verified = mark[2] if st is not None and mark and mark[:2] == (st.st_size, st.st_mtime_ns) else None
             part = self._part(e)
+            if downloading:
+                state = "downloading"
+            elif on_board and verified is not False:
+                state = "on_board"
+            elif st is not None:
+                state = "damaged"                   # there, but not the published file: re-download it
+            else:
+                state = "available"
             out[name] = {
                 "title": e.get("title", name), "about": e.get("about", ""), "precision": e.get("precision"),
                 "latency_ms": e.get("latency_ms"), "accuracy": e.get("accuracy") or {},
                 "file": f["name"], "bytes": f["bytes"], "url": self.url(f"{e['path']}/{f['name']}"),
                 "partial_bytes": part.stat().st_size if part.is_file() and not downloading else 0,
-                "state": "downloading" if downloading else "on_board" if on_board else "available",
+                "state": state, "on_disk_bytes": st.st_size if st is not None else 0, "verified": verified,
+                "replacing": downloading and st is not None,
                 "loaded": name == self._loaded(), "progress": progress, "error": self._failed.get(name),
             }
         return {"repo": self.repo, "page": f"https://huggingface.co/{self.repo}",
                 "collection": f"https://huggingface.co/collections/{HUB_COLLECTION}" if self.repo == HUB_REPO else None,
                 "error": self._error, "listed": self._models is not None, "models": out,
-                "directory": str(self.dir), "free_bytes": _free_bytes(self.dir)}
+                "directory": str(self.dir), "free_bytes": _free_bytes(self.dir), **models_storage(self.dir)}
 
-    def download(self, name: str) -> None:
+    def download(self, name: str, replace: bool = False) -> None:
+        """Fetch a model in the background. With `replace`, also when it is already here
+        (Re-download): the new copy goes to the .part file and replaces the old one only
+        once its sum is right, so a failed re-download leaves the old file as it was."""
         e = self.models().get(name)
         if e is None:
             raise CywsError(f"Hugging Face lists no model named {name!r}")
@@ -268,7 +292,7 @@ class Hub:
             if self._job is not None and self._job["thread"].is_alive():
                 raise CywsError(f"{self._job['name']} is downloading; one download at a time")
             path = self.dir / f["name"]
-            if path.is_file() and path.stat().st_size == f["bytes"]:
+            if not replace and path.is_file() and path.stat().st_size == f["bytes"]:
                 raise CywsError(f"{name} is already on this board")
             part = self._part(e)
             need = f["bytes"] - (part.stat().st_size if part.is_file() else 0)
@@ -280,6 +304,41 @@ class Hub:
             job["thread"] = threading.Thread(target=self._run, args=(job, e), name="hub-download", daemon=True)
             self._job = job
             job["thread"].start()
+
+    def redownload(self, name: str) -> None:
+        self.download(name, replace=True)
+
+    def verify(self, name: str) -> bool:
+        """Check the file on the board against the published SHA-256 (about a second on the A65)."""
+        e = self.models().get(name)
+        if e is None:
+            raise CywsError(f"Hugging Face lists no model named {name!r}")
+        f = e["files"][0]
+        path = self.dir / f["name"]
+        if not path.is_file():
+            raise CywsError(f"{name} is not on this board")
+        st = path.stat()
+        digest = hashlib.sha256()
+        with path.open("rb") as file:
+            while chunk := file.read(1 << 22):
+                digest.update(chunk)
+        ok = st.st_size == f["bytes"] and digest.hexdigest() == f["sha256"]
+        self._verified[name] = (st.st_size, st.st_mtime_ns, ok)
+        if ok:
+            self._failed.pop(name, None)
+        else:
+            self._failed[name] = (f"{f['name']} on the board does not match the published file "
+                                  f"({st.st_size} of {f['bytes']} bytes, or a different sum). Re-download it.")
+        return ok
+
+    def forget(self, name: str) -> None:
+        """A model was deleted: drop what was known about its file."""
+        self._verified.pop(name, None)
+        self._failed.pop(name, None)
+
+    def busy_with(self, name: str) -> bool:
+        job = self._job
+        return job is not None and job["name"] == name and job["thread"].is_alive()
 
     def cancel(self, name: str) -> None:
         job = self._job
@@ -332,6 +391,8 @@ class Hub:
                 part.unlink(missing_ok=True)
                 raise ValueError(f"{f['name']} arrived damaged ({size} of {f['bytes']} bytes); try again")
             os.replace(part, target)
+            st = target.stat()
+            self._verified[name] = (st.st_size, st.st_mtime_ns, True)
             if not self.quiet:
                 log(f"downloaded {name} from {self.repo} ({f['bytes'] >> 20} MB)")
         except InterruptedError:
@@ -463,6 +524,30 @@ class Demo:
     def available_models(self) -> list[dict]:
         return [{"name": n, "label": m["label"], "available": self._on_board(m),
                  "loaded": n == self.model_name} for n, m in self._catalog().items()]
+
+    def delete_model(self, name: str) -> None:
+        """Delete a model's file (and any stopped download of it) from the models directory.
+        The loaded model is refused: load another first, so the MLA always runs a file that
+        is there."""
+        catalog = self._catalog()
+        if name not in catalog:
+            raise CywsError(f"unknown model {name!r}")
+        if self.hub is not None and self.hub.busy_with(name):
+            raise CywsError(f"{name} is downloading; cancel the download first")
+        with self.lock:                                  # waits out a load or a run in progress
+            if name == self.model_name or (self.state == "loading" and self.load_target == name):
+                raise CywsError(f"{name} is loaded on the MLA. Load another model before deleting it")
+            path = (self.models_dir / catalog[name]["file"]).resolve()
+            if path.parent != self.models_dir.resolve():
+                raise CywsError(f"refusing to delete a file outside the models directory: {path}")
+            part = path.with_name(path.name + ".part")
+            if not path.exists() and not part.exists():
+                raise CywsError(f"{name} is not on this board")
+            path.unlink(missing_ok=True)
+            part.unlink(missing_ok=True)
+            if self.hub is not None:
+                self.hub.forget(name)
+        log(f"deleted model {name} ({path})")
 
     def load_model(self, name: str) -> None:
         catalog = self._catalog()
@@ -799,21 +884,34 @@ def create_app(demo: Demo) -> Flask:
     @app.get("/api/hub")
     def hub_list():
         if demo.hub is None:
-            return jsonify({"repo": None, "listed": True, "models": {}, "error": None})
+            return jsonify({"repo": None, "listed": True, "models": {}, "error": None,
+                            "directory": str(demo.models_dir), "free_bytes": _free_bytes(demo.models_dir),
+                            **models_storage(demo.models_dir)})
         demo.hub.models(wait=demo.hub._models is None)        # the first visit waits for the list
         return jsonify(demo.hub.describe())
 
     @app.post("/api/hub/<action>")
     def hub_action(action):
         name = str((request.get_json(silent=True) or {}).get("name", ""))
+        if action == "delete":                           # works without the hub too
+            try:
+                demo.delete_model(name)
+            except Exception as e:
+                return fail(e)
+            return jsonify(demo.hub.describe() if demo.hub else {"repo": None, "listed": True, "models": {},
+                                                                 "error": None, **models_storage(demo.models_dir)})
         if demo.hub is None:
             return fail(CywsError("this demo has no model hub (started with --hub-repo '')"))
-        fn = {"download": demo.hub.download, "cancel": demo.hub.cancel, "discard": demo.hub.discard}.get(action)
+        fn = {"download": demo.hub.download, "redownload": demo.hub.redownload, "verify": demo.hub.verify,
+              "cancel": demo.hub.cancel, "discard": demo.hub.discard}.get(action)
         if fn is None:
             return fail(KeyError(f"unknown action {action}"), 404)
         try:
-            fn(name)
-            return jsonify(demo.hub.describe())
+            result = fn(name)
+            out = demo.hub.describe()
+            if action == "verify":
+                out["verified"] = {"name": name, "ok": bool(result)}
+            return jsonify(out)
         except Exception as e:
             return fail(e)
 
@@ -847,13 +945,19 @@ def main() -> int:
     ap.add_argument("--list-hub", action="store_true", help="list the models on Hugging Face and exit")
     ap.add_argument("--fetch", nargs="+", metavar="NAME",
                     help="download these models from Hugging Face into --models and exit ('all' for every one)")
+    ap.add_argument("--delete", nargs="+", metavar="NAME",
+                    help="delete these models from --models and exit (not one the running demo has loaded)")
+    ap.add_argument("--verify", nargs="+", metavar="NAME",
+                    help="check these models in --models against their published SHA-256 and exit ('all')")
     ap.add_argument("--no-https", dest="https", action="store_false",
                     help="serve plain HTTP only (by default the port also speaks HTTPS when a certificate "
                          "exists; browsers only allow the webcam on HTTPS pages)")
     ap.add_argument("--cert", default=str(ROOT / "webapp/certs/cert.pem"))
     ap.add_argument("--key", default=str(ROOT / "webapp/certs/key.pem"))
     args = ap.parse_args()
-    if args.list_hub or args.fetch:
+    if args.delete:
+        return delete_command(args)
+    if args.list_hub or args.fetch or args.verify:
         return hub_command(args)
     faulthandler.register(signal.SIGUSR1)
 
@@ -945,11 +1049,28 @@ def hub_command(args) -> int:
         print(listed["error"], file=sys.stderr)
         return 1
     mb = lambda n: f"{n / 1e9:.2f} GB" if n >= 1e9 else f"{n / 1e6:.0f} MB"
-    if args.list_hub:
+    if getattr(args, "list_hub", False):
         print(f"models in {listed['page']} (into {models_dir}):")
         for name, m in listed["models"].items():
             print(f"  {name:8s} {m['title']:14s} {mb(m['bytes']):>8s}  {m['state'].replace('_', ' ')}")
+        print(f"on this board: {listed['model_count']} model(s), {mb(listed['used_bytes'])}; "
+              f"{mb(listed['free_bytes'])} free")
         return 0
+    if getattr(args, "verify", None):
+        here = [n for n, m in listed["models"].items() if m["on_disk_bytes"]]
+        names, bad = (here if args.verify == ["all"] else args.verify), 0
+        if not names:
+            print(f"no model to check in {models_dir}")
+        for name in names:
+            try:
+                ok = hub.verify(name)
+            except CywsError as e:
+                print(f"  {name}: {e}", file=sys.stderr)
+                bad += 1
+                continue
+            print(f"  {name}: {'matches the published file' if ok else hub._failed[name]}", file=sys.stdout if ok else sys.stderr)
+            bad += not ok
+        return 1 if bad else 0
     names = list(listed["models"]) if args.fetch == ["all"] else args.fetch
     failed = 0
     for name in names:
@@ -990,6 +1111,48 @@ def hub_command(args) -> int:
         else:
             print(f"  {name}: {hub._failed.get(name, 'the download stopped')}", file=sys.stderr)
             failed += 1
+    return 1 if failed else 0
+
+
+def delete_command(args) -> int:
+    """`--delete NAME…`: remove models from the models directory. A model the demo running
+    on this board has loaded is refused (it is asked over HTTP on --port)."""
+    models_dir = Path(args.models).resolve()
+    files = {n: m["file"] for n, m in MODELS.items()}
+    if args.hub_repo:                                    # names Hugging Face adds, when it answers
+        hub = Hub(args.hub_repo, models_dir, loaded=lambda: None, catalog=lambda: {})
+        hub._refresh()
+        files.update({n: e["files"][0]["name"] for n, e in (hub._models or {}).items()})
+    loaded = None
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{args.port}/api/status")
+        with urllib.request.urlopen(req, timeout=2) as r:
+            st = json.loads(r.read(1 << 20))
+            if st.get("app") == "cyws-demo":
+                loaded = st.get("model") or (st.get("load") or {}).get("target")
+    except (OSError, ValueError):
+        pass
+    names = [n for n in files if (models_dir / files[n]).exists()] if args.delete == ["all"] else args.delete
+    failed = 0
+    for name in names:
+        if name not in files:
+            print(f"  {name}: no such model (known: {', '.join(files)})", file=sys.stderr)
+            failed += 1
+            continue
+        path = models_dir / files[name]
+        part = path.with_name(path.name + ".part")
+        if name == loaded:
+            print(f"  {name}: the running demo has it loaded; load another model or stop the demo first",
+                  file=sys.stderr)
+            failed += 1
+            continue
+        if not path.exists() and not part.exists():
+            print(f"  {name}: not here ({path})")
+            continue
+        size = sum(p.stat().st_size for p in (path, part) if p.exists())
+        path.unlink(missing_ok=True)
+        part.unlink(missing_ok=True)
+        print(f"  {name}: deleted {path} ({size / 1e6:.0f} MB)")
     return 1 if failed else 0
 
 

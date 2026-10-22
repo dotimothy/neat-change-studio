@@ -1295,3 +1295,36 @@ table.all .tdot.none { background: var(--text-3); }
 @media (max-width: 760px) { .cam-align-pill { font-size: 11.5px; top: 8px; left: 8px; } }
 #cam-align-btn[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 @media (max-width: 760px) { #cam-align-btn > span, #cam-ghost-btn > span { display: none; } .cam-actions .btn#cam-align-btn, .cam-actions .btn#cam-ghost-btn { flex: 0 0 auto; } }
+
+/* ---- model manager: per-model actions, storage, confirm dialog */
+.mm-manage { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mm-mini { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text-2); font-size: 11.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.mm-mini svg { width: 13px; height: 13px; stroke-width: 2.1; }
+.mm-mini:hover:not(:disabled) { color: var(--text); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.mm-mini.danger:hover:not(:disabled) { color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, var(--border)); }
+.mm-mini.primary { background: var(--accent); border-color: transparent; color: var(--accent-contrast); }
+.mm-mini.primary:hover:not(:disabled) { background: var(--accent-strong); color: var(--accent-contrast); }
+.mm-badge.warn { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+.confirm-body { overflow-wrap: anywhere; }
+.mm-mini:disabled { opacity: .45; cursor: not-allowed; }
+.mm-mini.busy { opacity: .8; cursor: progress; }
+.mm-mini.busy svg { animation: spin 1s linear infinite; }
+.mm-ok { color: var(--ok); }
+.mm-act.danger { background: var(--err); color: #fff; }
+.mm-act.danger:hover { background: color-mix(in srgb, var(--err) 85%, #000); }
+.mm-storage { display: flex; flex-direction: column; gap: 5px; margin: 10px 0 2px; font-size: 11.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.mm-storage .mm-bar { height: 5px; }
+.mm-storage .mm-bar i { background: var(--accent); transition: width .4s ease; }
+.mm-storage-row { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+.confirm { border: 0; padding: 0; background: transparent; color: var(--text); max-width: min(420px, calc(100vw - 32px)); width: 100%; }
+.confirm::backdrop { background: rgba(0, 0, 0, .5); backdrop-filter: blur(2px); }
+.confirm-panel { margin: 0; padding: 22px 22px 18px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
+.confirm-icon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); margin-bottom: 12px; }
+.confirm-icon svg { width: 20px; height: 20px; stroke-width: 2; }
+.confirm-title { margin: 0 0 6px; font-size: 16px; font-weight: 650; }
+.confirm-body { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.confirm[open] .confirm-panel { animation: confirm-in .18s ease-out; }
+@keyframes confirm-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .confirm[open] .confirm-panel, .mm-mini.busy svg { animation: none; } }

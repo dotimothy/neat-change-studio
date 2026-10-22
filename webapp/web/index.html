@@ -58,6 +58,8 @@
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17h.01"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 5 6v5.5c0 4.2 3 7.6 7 9 4-1.4 7-4.8 7-9V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
   <symbol id="i-webcam" viewBox="0 0 24 24"><circle cx="12" cy="10" r="6.5"/><circle cx="12" cy="10" r="2.6"/><path d="M8 20h8M12 16.5V20"/></symbol>
   <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.4 5.4a9.3 9.3 0 0 0 0 13.2M18.6 5.4a9.3 9.3 0 0 1 0 13.2"/></symbol>
   <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7"/><path d="M12 10v3.5l2.3 2M9.5 3.5h5M12 3.5v3"/></symbol>
@@ -304,6 +306,7 @@
           <div class="setting">
             <div class="setting-label">Model</div>
             <div class="models" id="models" role="radiogroup" aria-label="Model"></div>
+            <div class="mm-storage" id="models-storage" hidden></div>
             <p class="models-src" id="models-src"></p>
             <p class="err-line" id="model-err" hidden></p>
           </div>
@@ -374,6 +377,19 @@
     <button type="button" role="tab" data-tab="settings" aria-selected="false"><svg><use href="#i-sliders"/></svg><span>Settings</span></button>
   </nav>
 </div>
+
+<!-- Confirm a step that can't be undone (deleting a model) -->
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+  <form method="dialog" class="confirm-panel">
+    <div class="confirm-icon" aria-hidden="true"><svg><use href="#i-trash"/></svg></div>
+    <h2 class="confirm-title" id="confirm-title"></h2>
+    <p class="confirm-body" id="confirm-body"></p>
+    <div class="confirm-actions">
+      <button type="submit" class="mm-act ghost" value="cancel" id="confirm-cancel">Cancel</button>
+      <button type="submit" class="mm-act danger" value="ok" id="confirm-ok"></button>
+    </div>
+  </form>
+</dialog>
 
 <!-- Bottom sheet (phone menus) -->
 <div class="sheet" id="sheet" hidden>

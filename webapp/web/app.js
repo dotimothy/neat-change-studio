@@ -226,19 +226,63 @@ async function refreshHub() {
   state.hubWasBusy = downloading || null;
 }
 
+/* A styled yes/no for steps that can't be undone. Resolves true on the confirm button. */
+function confirmBox({ title, body, ok }) {
+  const dlg = $("#confirm");
+  $("#confirm-title").textContent = title;
+  $("#confirm-body").textContent = body;
+  $("#confirm-ok").textContent = ok;
+  return new Promise((resolve) => {
+    dlg.returnValue = "";
+    dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
+    dlg.showModal();
+    $("#confirm-cancel").focus();                       // the safe choice has the focus
+  });
+}
+
+/* The model manager's actions. Delete and Re-download ask first; Verify checks the file's
+   SHA-256 (a second or so) and says how it went. */
 async function hubAction(action, name) {
+  const m = ((state.hub && state.hub.models) || {})[name] || {};
+  const local = ((state.status && state.status.models) || []).find((x) => x.name === name) || {};
+  const size = m.on_disk_bytes || m.bytes;
+  if (action === "delete") {
+    const ok = await confirmBox({
+      title: `Delete ${name}?`,
+      body: `This removes ${m.file || "its file"}${size ? ` (${fmtMB(size)})` : ""} from ${state.hub && state.hub.directory || "the models folder"}.`
+        + (m.url || m.bytes ? " You can download it again from Hugging Face." : " It is not on Hugging Face, so it can't be downloaded again here."),
+      ok: "Delete" });
+    if (!ok) return;
+  } else if (action === "redownload" && (m.state === "on_board" || local.available)) {
+    const ok = await confirmBox({
+      title: `Re-download ${name}?`,
+      body: `This fetches a fresh copy (${fmtMB(m.bytes)}) from Hugging Face. The file on the board stays in use until the new one has arrived and passed its checksum.`,
+      ok: "Re-download" });
+    if (!ok) return;
+  }
+  state.hubBusy = { name, action };
+  modelsSig = "";
+  if (state.status) renderModels(state.status);
   try {
-    state.hub = await postJSON(`/api/hub/${action}`, { name });
-    if (action === "download") toast(`Downloading ${name} from Hugging Face`, "info", 2500);
+    const out = await postJSON(`/api/hub/${action}`, { name });
+    state.hub = out;
+    if (action === "download" || action === "redownload") toast(`Downloading ${name} from Hugging Face`, "info", 2500);
+    else if (action === "delete") { toast(`Deleted ${name}`, "ok", 3000); await refreshStatus(); }
+    else if (action === "verify") {
+      if (out.verified && out.verified.ok) toast(`${name} matches the published file`, "ok", 3000);
+      else toast(`${name} doesn't match the published file. Re-download it.`, "error");
+    }
   } catch (e) {
     toast(e.message, "error");
+  } finally {
+    state.hubBusy = null;
   }
   refreshHub();
 }
 
 function renderModels(s) {
   const hub = state.hub || { models: {} };
-  const sig = JSON.stringify([s.model, s.state, state.modelSwitching, s.models, hub]);
+  const sig = JSON.stringify([s.model, s.state, state.modelSwitching, s.models, hub, state.hubBusy]);
   if (sig === modelsSig) return;
   modelsSig = sig;
   const names = [...new Set([...(s.models || []).map((m) => m.name), ...Object.keys(hub.models || {})])];
@@ -254,13 +298,16 @@ function renderModels(s) {
     const stats = remote ? [remote.latency_ms ? `${remote.latency_ms} ms per Window` : null,
       acc.changes_found ? `${acc.changes_found} Found` : null, acc.pixel_f1 != null ? `F1 ${acc.pixel_f1.toFixed(3)}` : null,
       fmtMB(remote.bytes)].filter(Boolean) : [];
+    if (remote && remote.verified === true && onBoard) stats.push("SHA-256 ✓");
     let badge = "", action = "";
     if (on && !loading) badge = `<span class="mm-badge on">Loaded</span>`;
     else if (loading) badge = `<span class="mm-badge">Loading…</span>`;
+    else if (onBoard && remote && remote.state === "damaged") badge = `<span class="mm-badge warn" title="The file doesn't match the published one">Damaged</span>`;
     else if (onBoard) badge = `<span class="mm-badge">On Board</span>`;
+    const busy = state.hubBusy && state.hubBusy.name === name ? state.hubBusy.action : "";
     if (remote && remote.state === "downloading") {
       const pr = remote.progress || {};
-      action = `<div class="mm-dl"><div class="mm-bar"><i style="width:${(100 * (pr.fraction || 0)).toFixed(1)}%"></i></div>
+      action = `<div class="mm-dl">${remote.replacing ? `<span class="mm-dl-row" style="margin:0">Re-downloading · the copy on the board stays in use until this one is checked</span>` : ""}<div class="mm-bar"><i style="width:${(100 * (pr.fraction || 0)).toFixed(1)}%"></i></div>
         <div class="mm-dl-row"><span>${Math.round(100 * (pr.fraction || 0))}% · ${fmtMB(pr.done_bytes || 0)} of ${fmtMB(remote.bytes)}${pr.bytes_per_second ? ` · ${fmtMB(pr.bytes_per_second)}/s` : ""}${pr.seconds_left != null ? ` · ${fmtLeft(pr.seconds_left)}` : ""}</span>
         <button type="button" class="mm-act ghost" data-act="cancel">Cancel</button></div></div>`;
     } else if (remote && !onBoard) {
@@ -268,6 +315,24 @@ function renderModels(s) {
       action = `${remote.error ? `<p class="mm-err">${esc(remote.error)}</p>` : ""}<div class="mm-dl-row">
         <button type="button" class="mm-act" data-act="download"><svg><use href="#i-download"/></svg>${part ? `Continue · ${fmtMB(part)} of ${fmtMB(remote.bytes)}` : `Download · ${fmtMB(remote.bytes)}`}</button>
         ${part ? `<button type="button" class="mm-act ghost" data-act="discard">Discard</button>` : ""}</div>`;
+    }
+    // On the board: the manager's actions. The loaded model can't be deleted (load another first).
+    if (onBoard && !(remote && remote.state === "downloading")) {
+      const damaged = remote && remote.state === "damaged";
+      const locked = on || !!state.modelSwitching;
+      const btn = (act, icon, label, extra = "") => {
+        const doing = busy === act;
+        const cls = act === "delete" ? "danger" : act === "redownload" && damaged ? "primary" : "";
+        return `<button type="button" class="mm-mini ${cls} ${doing ? "busy" : ""}" data-act="${act}" ${extra}
+          ${busy ? "disabled" : ""}><svg><use href="#${doing ? "i-refresh" : icon}"/></svg>${doing ? { verify: "Checking…", delete: "Deleting…", redownload: "Starting…" }[act] : label}</button>`;
+      };
+      action = `${damaged || (remote && remote.error) ? `<p class="mm-err">${esc((remote && remote.error) || "The file on the board is not the published one. Re-download it.")}</p>` : ""}
+        <div class="mm-manage" role="group" aria-label="Manage ${esc(name)}">
+        ${remote ? btn("verify", "i-shield", "Verify", `title="Check the file against its published SHA-256"`) : ""}
+        ${remote ? btn("redownload", "i-refresh", "Re-download", `title="Fetch a fresh copy from Hugging Face"`) : ""}
+        ${btn("delete", "i-trash", "Delete", locked ? `disabled title="${on ? "Loaded on the MLA: load another model before deleting this one" : "Wait for the model switch"}"`
+          : `title="Delete ${esc(name)} from the board"`)}
+        </div>`;
     }
     const pick = onBoard && !on && !state.modelSwitching;
     const role = onBoard ? `role="radio" aria-checked="${on}" tabindex="${pick || on ? 0 : -1}"`
@@ -281,10 +346,17 @@ function renderModels(s) {
         ${action}</span></div>`;
   }).join("");
   const src = $("#models-src");
+  const store_ = $("#models-storage");
+  if (hub.used_bytes != null && hub.free_bytes) {
+    const used = hub.used_bytes, total = used + hub.free_bytes;
+    store_.hidden = false;
+    store_.innerHTML = `<div class="mm-storage-row"><span><b>Storage</b> · ${hub.model_count || 0} Model${hub.model_count === 1 ? "" : "s"} · ${fmtMB(used)}${hub.partial_count ? ` + ${hub.partial_count} Partial` : ""}</span><span>${fmtMB(hub.free_bytes)} Free</span></div>
+      <div class="mm-bar" role="img" aria-label="Models use ${fmtMB(used)}, ${fmtMB(hub.free_bytes)} free"><i style="width:${Math.max(used ? 1 : 0, 100 * used / total).toFixed(1)}%"></i></div>`;
+  } else store_.hidden = true;
   if (hub.repo) {
     src.innerHTML = `${hub.error ? `<span class="mm-err">${esc(hub.error)}</span> ` : ""}Models download from Hugging Face:
       <a href="${esc(hub.page)}" target="_blank" rel="noopener">${esc(hub.repo)}<svg><use href="#i-external"/></svg></a>${hub.collection
-        ? ` · <a href="${esc(hub.collection)}" target="_blank" rel="noopener">Collection<svg><use href="#i-external"/></svg></a>` : ""}${hub.free_bytes ? ` · ${fmtMB(hub.free_bytes)} Free` : ""}${hub.directory ? `<br>Folder: <code>${esc(hub.directory)}</code>` : ""}`;
+        ? ` · <a href="${esc(hub.collection)}" target="_blank" rel="noopener">Collection<svg><use href="#i-external"/></svg></a>` : ""}${hub.directory ? `<br>Folder: <code>${esc(hub.directory)}</code>` : ""}`;
   } else src.textContent = "";
 }
 
@@ -2194,7 +2266,8 @@ function bind() {
     const row = e.target.closest(".model-opt");
     if (!row) return;
     const act = e.target.closest("[data-act]");
-    if (act) { hubAction(act.dataset.act, row.dataset.name); return; }
+    if (act) { if (!act.disabled) hubAction(act.dataset.act, row.dataset.name); return; }
+    if (e.target.closest(".mm-manage, .mm-dl, .mm-dl-row, .mm-err")) return;   // around the buttons: not a pick
     if (row.dataset.onboard === "1") switchModel(row.dataset.name);
   });
   $("#models").addEventListener("keydown", (e) => {
@@ -2258,6 +2331,7 @@ function bind() {
   document.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key === "Escape") {
+      if ($("#confirm").open) return;                  // the dialog closes itself
       if (!$("#mswitch").hidden && !$("#msw-close").hidden) { mswHide(); return; }
       if (!$("#cam").hidden && !cam.live) { closeCam(); return; }
       if (!$("#sheet").hidden) { closeSheet(); return; }

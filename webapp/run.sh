@@ -7,6 +7,8 @@
 #   webapp/run.sh --daemon         # start detached, log to webapp/server.log
 #   webapp/run.sh --fetch bf16     # download a model from Hugging Face into models/ (or: all)
 #   webapp/run.sh --list-hub       # what Hugging Face has, and what is here
+#   webapp/run.sh --verify all     # check the models here against their published SHA-256
+#   webapp/run.sh --delete w8a16   # delete a model (not the one the running demo has loaded)
 #   webapp/run.sh --no-https       # plain HTTP only (the webcam then only works from localhost)
 #   webapp/run.sh update           # fetch the latest source over this install, then re-run setup.sh
 # Browsers allow the webcam only on HTTPS pages, so the same port also speaks HTTPS, with a
@@ -74,7 +76,7 @@ HTTPS=1
 args=() daemon=0
 # Model downloads don't serve anything or touch the MLA: run them straight away.
 for a in "$@"; do
-  if [[ "$a" == --fetch || "$a" == --list-hub ]]; then
+  if [[ "$a" == --fetch || "$a" == --list-hub || "$a" == --delete || "$a" == --verify ]]; then
     PY="python3"; [[ -f "${PYNEAT_VENV:-$HOME/pyneat}/bin/activate" ]] && PY="${PYNEAT_VENV:-$HOME/pyneat}/bin/python3"
     cd "$ROOT" && exec "$PY" "$HERE/server.py" "$@"
   fi

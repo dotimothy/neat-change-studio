@@ -266,3 +266,108 @@ def test_default_models_dir_precedence(tmp_path, monkeypatch):
 
 def test_free_bytes_of_a_missing_dir(tmp_path):
     assert server._free_bytes(tmp_path / "not" / "yet") > 0
+
+
+# ---------------------------------------------------------------- model manager
+def test_delete_a_downloaded_model(hub_demo):
+    demo, fake = hub_demo
+    c = server.create_app(demo).test_client()
+    demo.hub.download("tiny")
+    _wait(demo.hub)
+    d = c.get("/api/hub").get_json()
+    assert d["model_count"] >= 1 and d["used_bytes"] >= len(fake.blob)
+    assert d["models"]["tiny"]["verified"] is True                  # a fresh download was checked
+    r = c.post("/api/hub/delete", json={"name": "tiny"})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["models"]["tiny"]["state"] == "available"
+    assert not (demo.models_dir / "cyws_tiny_mpk.tar.gz").exists()
+    r = c.post("/api/hub/delete", json={"name": "tiny"})
+    assert r.status_code == 400 and "not on this board" in r.get_json()["error"]
+
+
+def test_the_loaded_model_cannot_be_deleted(hub_demo):
+    demo, _ = hub_demo
+    c = server.create_app(demo).test_client()
+    r = c.post("/api/hub/delete", json={"name": "bf16"})
+    assert r.status_code == 400 and "Load another model" in r.get_json()["error"]
+    assert (demo.models_dir / server.MODELS["bf16"]["file"]).exists()
+    r = c.post("/api/hub/delete", json={"name": "w8a16"})            # not loaded: fine, even without the hub
+    assert r.status_code == 200
+    assert not (demo.models_dir / server.MODELS["w8a16"]["file"]).exists()
+    assert c.post("/api/hub/delete", json={"name": "../etc"}).status_code == 400
+
+
+def test_delete_also_removes_a_stopped_download(hub_demo):
+    demo, fake = hub_demo
+    part = demo.models_dir / "cyws_tiny_mpk.tar.gz.part"
+    part.write_bytes(fake.blob[:100])
+    assert demo.hub.describe()["partial_count"] == 1
+    demo.delete_model("tiny")
+    assert not part.exists()
+
+
+def test_verify_and_redownload_a_damaged_model(hub_demo):
+    demo, fake = hub_demo
+    c = server.create_app(demo).test_client()
+    path = demo.models_dir / "cyws_tiny_mpk.tar.gz"
+    path.write_bytes(b"Z" * len(fake.blob))                          # right size, wrong bytes
+    assert c.get("/api/hub").get_json()["models"]["tiny"]["state"] == "on_board"
+    r = c.post("/api/hub/verify", json={"name": "tiny"}).get_json()
+    assert r["verified"] == {"name": "tiny", "ok": False}
+    assert r["models"]["tiny"]["state"] == "damaged" and "Re-download" in r["models"]["tiny"]["error"]
+    assert c.post("/api/hub/download", json={"name": "tiny"}).status_code == 400   # already here: needs redownload
+    assert c.post("/api/hub/redownload", json={"name": "tiny"}).status_code == 200
+    _wait(demo.hub)
+    assert path.read_bytes() == fake.blob
+    m = c.get("/api/hub").get_json()["models"]["tiny"]
+    assert m["state"] == "on_board" and m["verified"] is True and m["error"] is None
+    assert c.post("/api/hub/verify", json={"name": "tiny"}).get_json()["verified"]["ok"] is True
+
+
+def test_a_failed_redownload_keeps_the_old_file(hub_demo, monkeypatch):
+    demo, fake = hub_demo
+    path = demo.models_dir / "cyws_tiny_mpk.tar.gz"
+    path.write_bytes(fake.blob)
+
+    def offline(req, timeout=None):
+        raise OSError("network is down")
+    monkeypatch.setattr(server.urllib.request, "urlopen", offline)
+    demo.hub.redownload("tiny")
+    _wait(demo.hub)
+    assert path.read_bytes() == fake.blob
+    d = demo.hub.describe()["models"]["tiny"]
+    assert d["state"] == "on_board" and "stopped" in d["error"]
+
+
+def test_a_downloading_model_cannot_be_deleted(hub_demo):
+    import threading
+    demo, _ = hub_demo
+    gate = threading.Event()
+    demo.hub._job = {"name": "tiny", "thread": threading.Thread(target=gate.wait), "done": 0, "fetched": 0,
+                     "started": 0, "cancel": threading.Event()}
+    demo.hub._job["thread"].start()
+    try:
+        with pytest.raises(server.CywsError, match="downloading"):
+            demo.delete_model("tiny")
+    finally:
+        gate.set()
+
+
+def test_delete_and_verify_commands(tmp_path, monkeypatch, capsys):
+    fake = _FakeHF(b"mpk" * 3000)
+    monkeypatch.setattr(server.urllib.request, "urlopen", fake)
+    m = tmp_path / "m"
+    args = argparse.Namespace(hub_repo="someone/sima-cyws", models=str(m), list_hub=False, fetch=["tiny"],
+                              verify=None, delete=None, port=1)
+    assert server.hub_command(args) == 0
+    args.fetch, args.verify = None, ["all"]
+    assert server.hub_command(args) == 0
+    assert "matches the published file" in capsys.readouterr().out
+    (m / "cyws_tiny_mpk.tar.gz").write_bytes(b"x" * 9000)
+    assert server.hub_command(args) == 1
+    args.verify, args.delete = None, ["tiny"]
+    assert server.delete_command(args) == 0
+    assert not (m / "cyws_tiny_mpk.tar.gz").exists()
+    assert "deleted" in capsys.readouterr().out
+    args.delete = ["nope"]
+    assert server.delete_command(args) == 1
