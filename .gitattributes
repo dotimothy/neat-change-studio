@@ -1,0 +1,3 @@
+# Left out of the source archive that install.sh downloads (GitHub's tarball honours
+# export-ignore): the project page's screenshots and videos are only for GitHub Pages.
+/docs export-ignore

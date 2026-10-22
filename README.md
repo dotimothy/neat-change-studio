@@ -8,7 +8,7 @@ Before/after change detection with CYWS on the SiMa.ai Modalix MLA, through NEAT
 
 Three commands on a Modalix DevKit with the NEAT SDK and its `pyneat` environment (see [What you need](#what-you-need)), with internet access for the first install.
 
-**01 Install.** Fetch the source into `./neat-change-studio`:
+**01 Install.** Fetch the source into `./neat-change-studio`. The download is light, about 4 MB, with no models and none of the project page's screenshots. You download a model in step 02 or later from the web demo (Settings → Model):
 
 ```bash
 cd /media/nvme && curl -fsSL https://raw.githubusercontent.com/dotimothy/neat-change-studio/main/install.sh | bash
