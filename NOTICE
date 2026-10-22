@@ -42,3 +42,9 @@ Trademarks
 
 SiMa.ai, Modalix and Neat, and the logos in webapp/web/assets, are trademarks
 of SiMa.ai, Inc. They are not covered by the Apache License 2.0.
+
+OpenCV.js
+  webapp/web/vendor/opencv-4.12.0.js is OpenCV 4.12.0 compiled to WebAssembly, from the npm
+  package @techstark/opencv-js 4.12.0-release.1, unchanged. Copyright (C) the OpenCV
+  authors and contributors, https://opencv.org. Licensed under the Apache License 2.0.
+  It runs the webcam's alignment check (webapp/web/align-worker.js).

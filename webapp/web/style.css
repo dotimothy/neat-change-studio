@@ -1064,7 +1064,7 @@ table.all .tdot.none { background: var(--text-3); }
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: pulse 1.1s ease-in-out infinite; }
 .cam-stage { position: relative; border-radius: var(--radius); overflow: hidden; background: #05070b; aspect-ratio: var(--cam-ar, 16 / 9); max-height: calc(100dvh - 250px); margin: 0 auto; width: 100%; }
 .cam-stage video, .cam-ghost { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.cam-stage.mirror video, .cam-stage.mirror .cam-ghost { transform: scaleX(-1); }
+.cam-stage.mirror video, .cam-stage.mirror .cam-ghost, .cam-stage.mirror .cam-align { transform: scaleX(-1); }
 .cam-ghost { opacity: .38; pointer-events: none; mix-blend-mode: normal; transition: opacity .2s ease; }
 .cam-guide { position: absolute; inset: 14px; pointer-events: none; }
 .cam-guide i { position: absolute; width: 22px; height: 22px; border: 2px solid rgba(255,255,255,.7); }
@@ -1104,7 +1104,7 @@ table.all .tdot.none { background: var(--text-3); }
 
 /* live: the panel becomes a small floating preview, results update in the viewer */
 .cam.live { inset: auto calc(var(--rail-w) + 28px) 112px auto; padding: 0; display: block; }
-.cam.live .cam-scrim, .cam.live .cam-foot, .cam.live .cam-actions, .cam.live .cam-step, .cam.live .cam-guide, .cam.live .cam-ghost, .cam.live #cam-flip { display: none; }
+.cam.live .cam-scrim, .cam.live .cam-foot, .cam.live .cam-actions, .cam.live .cam-step, .cam.live .cam-guide, .cam.live .cam-ghost, .cam.live #cam-flip, .cam.live .cam-align, .cam.live .cam-align-pill { display: none; }
 .cam.live .cam-panel { width: 240px; padding: 10px; gap: 8px; animation: cam-dock .35s cubic-bezier(.2,.7,.3,1) both; }
 .cam.live .cam-stage { max-height: none; border-radius: 10px; }
 .cam.live .cam-stop { display: grid; }
@@ -1250,3 +1250,48 @@ table.all .tdot.none { background: var(--text-3); }
 }
 .mm-stats > span { white-space: nowrap; }
 .models-src code { font-family: var(--code-font); font-size: 10.5px; color: var(--text-2); overflow-wrap: anywhere; }
+
+/* ============================ App full screen ============================ */
+/* Phones: the tab bar already has Settings, so the header's Settings button makes room for full screen. */
+@media (max-width: 760px) { #btn-settings { display: none; } }
+#btn-fs[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+/* Immersive: where the browser has no Fullscreen API (iPhone Safari). The header and the metric
+   chips go; the tab bar stays, as it is the phone's navigation. */
+.app-immersive .app-header, .app-immersive .chipbar { display: none !important; }
+.app-immersive .app { padding-top: env(safe-area-inset-top); }
+.immersive-exit {
+  position: fixed; z-index: 190; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left));
+  width: 34px; height: 34px; border-radius: 50%; padding: 0; border: 1px solid var(--border);
+  background: var(--glass); color: var(--text-2); display: grid; place-items: center; box-shadow: var(--shadow-md);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); opacity: .9;
+}
+.immersive-exit:hover, .immersive-exit:active { color: var(--accent); opacity: 1; }
+.immersive-exit[hidden] { display: none; }
+.immersive-exit svg { width: 15px; height: 15px; stroke-width: 2.2; }
+/* the viewer's own full screen has its own close button: keep this one out of its way */
+.app-immersive:has(.viewer.pseudo-fs) .immersive-exit, .app-immersive:has(.viewer:fullscreen) .immersive-exit { display: none; }
+/* leave room for it at the top left of the first thing on screen */
+.app-immersive .main-col, .app-immersive .rail { padding-top: max(48px, calc(env(safe-area-inset-top) + 44px)); }
+@media (max-width: 380px) { .header-actions { gap: 4px; } .app-header .icon-btn, .status-pill { width: 40px; height: 40px; } }
+
+/* webcam: alignment indicator for the After shot (align-worker.js) */
+.cam-align { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.cam-align-pill {
+  position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 7px; max-width: calc(100% - 24px);
+  padding: 6px 12px 6px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: #fff; white-space: nowrap;
+  background: rgba(8,12,16,.66); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.14); transition: border-color .2s ease;
+}
+.cam-align-pill[hidden] { display: none; }
+.cam-align-pill .al-dot { width: 9px; height: 9px; border-radius: 50%; background: #8b95a1; flex: none; }
+.cam-align-pill .al-score { font-family: var(--code-font); font-weight: 400; font-variant-numeric: tabular-nums; }
+.cam-align-pill .al-score:empty { display: none; }
+.cam-align-pill .al-hint { font-weight: 400; opacity: .82; overflow: hidden; text-overflow: ellipsis; }
+.cam-align-pill .al-hint:not(:empty)::before { content: "· "; }
+.cam-align-pill.good { border-color: rgba(47,212,122,.6); } .cam-align-pill.good .al-dot { background: #2fd47a; box-shadow: 0 0 0 3px rgba(47,212,122,.25); }
+.cam-align-pill.near { border-color: rgba(255,194,26,.55); } .cam-align-pill.near .al-dot { background: #ffc21a; }
+.cam-align-pill.off { border-color: rgba(255,90,95,.55); } .cam-align-pill.off .al-dot { background: #ff5a5f; }
+.cam-align-pill.lost .al-dot { animation: pulse 1.1s ease-in-out infinite; }
+@media (max-width: 760px) { .cam-align-pill { font-size: 11.5px; top: 8px; left: 8px; } }
+#cam-align-btn[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+@media (max-width: 760px) { #cam-align-btn > span, #cam-ghost-btn > span { display: none; } .cam-actions .btn#cam-align-btn, .cam-actions .btn#cam-ghost-btn { flex: 0 0 auto; } }

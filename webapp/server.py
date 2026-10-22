@@ -54,6 +54,7 @@ from dataset_loader import discover_pairs, static_pair  # noqa: E402
 
 mimetypes.add_type("font/woff2", ".woff2")      # not in every platform's mime table
 mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 VIEW_LONG = 1600          # long side of the images sent to the browser
 MAX_RESULTS = 24          # rendered results kept in memory
@@ -742,7 +743,7 @@ def create_app(demo: Demo) -> Flask:
     def static_file(name):
         resp = send_from_directory(WEB, name)
         # fonts and logos never change; the page's own css/js revalidate (ETag) so updates show at once
-        resp.headers["Cache-Control"] = "public, max-age=604800, immutable" if name.startswith("assets/") else "no-cache"
+        resp.headers["Cache-Control"] = "public, max-age=604800, immutable" if name.startswith(("assets/", "vendor/")) else "no-cache"
         return resp
 
     @app.get("/api/status")

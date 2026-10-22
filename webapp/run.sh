@@ -83,7 +83,16 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --stop)
       pid="$(pgrep -f "[w]ebapp/server.py" || true)"
-      if [[ -n "$pid" ]]; then kill -TERM $pid; echo "stopped CYWS demo (pid $pid)"; else echo "CYWS demo is not running"; fi
+      if [[ -n "$pid" ]]; then
+        # shellcheck disable=SC2086
+        kill -TERM $pid
+        # wait until it has let go of the MLA, so a --daemon straight after does not find it busy
+        for _ in $(seq 1 40); do
+          alive=0; for p in $pid; do kill -0 "$p" 2>/dev/null && alive=1; done
+          ((alive)) || break; sleep 0.5
+        done
+        ((alive)) && echo "CYWS demo (pid $pid) is still shutting down" >&2 || echo "stopped CYWS demo (pid $pid)"
+      else echo "CYWS demo is not running"; fi
       exit 0 ;;
     --daemon) daemon=1; shift ;;
     --port) [[ $# -ge 2 ]] || { echo "--port needs a value" >&2; exit 2; }

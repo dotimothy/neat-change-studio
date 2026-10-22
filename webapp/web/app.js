@@ -821,6 +821,7 @@ async function startStream() {
 }
 
 function stopStream() {
+  stopAlign();
   cancelCountdown();
   if (cam.stream) cam.stream.getTracks().forEach((t) => t.stop());
   cam.stream = null;
@@ -869,6 +870,10 @@ function renderCam() {
   const live = $("#cam-live");
   live.disabled = !(before && ready) || counting;
   live.title = !before ? "Capture Before first" : "Compare every new frame with Before";
+  const ab = $("#cam-align-btn");
+  ab.setAttribute("aria-pressed", String(align.on));
+  ab.title = align.on ? "Alignment Check On: Turn Off" : "Alignment Check Off: Turn On";
+  updateAlign();
 }
 
 async function grabFrame(role) {
@@ -892,6 +897,164 @@ function setShot(role, file) {
   if (role === "before" && !file) setShot("after", null);   // a new Before needs a new After
   renderCam();
   if (file && !mq.still.matches) { const b = $(`.cam-shot[data-role="${role}"]`); b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); }
+}
+
+/* ---- Alignment indicator: while the After shot is lined up, how well the live camera
+   matches the Before photo. OpenCV.js runs in align-worker.js (ORB matches and a RANSAC
+   affine fit); here frames go to it a few times a second, the answer is smoothed, and the
+   Before frame's outline and an arrow are drawn over the preview. The arrow points to where
+   the Before view is: move or turn the camera that way. */
+const ALIGN_W = 320, ALIGN_EVERY_MS = 160;
+const align = { worker: null, ready: false, failed: false, busy: false, timer: 0, id: 0, refFor: null, refOk: null,
+  view: null, miss: 0, level: "", atCapture: null, canvas: null };
+// d: how far the Before frame's corners are from the live frame's, as a share of its diagonal.
+// Aligned under 3% (about a 4% shift), almost under 7%; 100% to 0% over 0 to 20%.
+const alignScore = (d) => Math.round(100 * clamp(1 - d / 0.2, 0, 1));
+const alignLevel = (d) => (d < 0.03 ? "good" : d < 0.07 ? "near" : "off");
+align.on = store.get("cyws-cam-align") !== "0";      // the Align button; on unless turned off
+const alignWanted = () => !!(align.on && cam.stream && cam.shots.before && !cam.shots.after && !cam.live && !$("#cam").hidden);
+function toggleAlign() {
+  align.on = !align.on;
+  store.set("cyws-cam-align", align.on ? "1" : "0");
+  renderCam();
+}
+
+function ensureAlignWorker() {
+  if (align.worker || align.failed) return;
+  if (!window.Worker || !window.WebAssembly) { align.failed = true; return; }
+  try { align.worker = new Worker("/static/align-worker.js"); } catch (e) { align.failed = true; return; }
+  align.worker.onmessage = onAlignMessage;
+  align.worker.onerror = () => { align.failed = true; stopAlign(); };
+}
+function smallImage(src, w, h) {
+  const cw = ALIGN_W, ch = Math.max(1, Math.round(h * ALIGN_W / w));
+  const cv = align.canvas || (align.canvas = document.createElement("canvas"));
+  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(src, 0, 0, cw, ch);
+  return ctx.getImageData(0, 0, cw, ch);
+}
+async function sendAlignRef() {
+  const file = cam.shots.before;
+  if (!file || !align.worker || !align.ready) return;
+  try {
+    const bm = await createImageBitmap(file);
+    const img = smallImage(bm, bm.width, bm.height);
+    if (bm.close) bm.close();
+    if (cam.shots.before !== file) return;
+    align.worker.postMessage({ type: "ref", width: img.width, height: img.height, data: img.data }, [img.data.buffer]);
+  } catch (e) { /* no indicator for this shot */ }
+}
+function updateAlign() {
+  if (!alignWanted()) { stopAlign(); return; }
+  ensureAlignWorker();
+  if (!align.worker) return;
+  if (align.refFor !== cam.shots.before) {
+    align.refFor = cam.shots.before; align.refOk = null; align.view = null; align.miss = 0;
+    sendAlignRef();
+  }
+  if (!align.timer) align.timer = setInterval(alignTick, ALIGN_EVERY_MS);
+  $("#cam-align-pill").hidden = false;
+  if (!align.view) renderAlign(null);
+}
+function stopAlign() {
+  clearInterval(align.timer);
+  align.timer = 0; align.view = null; align.miss = 0; align.level = "";
+  const pill = $("#cam-align-pill");
+  if (pill) pill.hidden = true;
+  const c = $("#cam-align");
+  if (c) c.getContext("2d").clearRect(0, 0, c.width, c.height);
+}
+function alignTick() {
+  if (!alignWanted()) { stopAlign(); return; }
+  if (!align.ready || !align.refOk || align.busy) return;
+  const v = $("#cam-video");
+  if (!v.videoWidth) return;
+  const img = smallImage(v, v.videoWidth, v.videoHeight);
+  align.busy = true;
+  align.worker.postMessage({ type: "frame", id: ++align.id, width: img.width, height: img.height, data: img.data }, [img.data.buffer]);
+}
+function onAlignMessage(e) {
+  const m = e.data;
+  if (m.type === "ready") { align.ready = true; if (alignWanted()) sendAlignRef(); return; }
+  if (m.type === "error") { align.failed = true; stopAlign(); return; }
+  if (m.type === "ref") {
+    if (m.reason === "starting") return;
+    align.refOk = !!m.ok;
+    if (!m.ok && alignWanted()) renderAlign(null);
+    return;
+  }
+  if (m.type !== "frame") return;
+  align.busy = false;
+  if (!alignWanted()) return;
+  if (m.ok) {
+    const v = align.view, k = 0.5;                // smooth out the frame-to-frame jitter
+    align.view = !v ? { ...m } : { ...m, d: v.d + k * (m.d - v.d), dx: v.dx + k * (m.dx - v.dx), dy: v.dy + k * (m.dy - v.dy),
+      scale: v.scale + k * (m.scale - v.scale), rotation: v.rotation + k * (m.rotation - v.rotation),
+      quad: m.quad.map((q, i) => v.quad[i] + k * (q - v.quad[i])) };
+    align.miss = 0;
+  } else if (++align.miss >= 3) {
+    align.view = null;
+  }
+  renderAlign(align.view);
+}
+function renderAlign(view) {
+  const pill = $("#cam-align-pill");
+  let level, label, hint = "";
+  if (!view) {
+    level = "lost";
+    label = align.refOk === false ? "Before Photo Too Plain to Track" : align.ready ? "Looking for the Before Scene" : "Starting the Alignment Check";
+  } else {
+    level = alignLevel(view.d);
+    label = level === "good" ? "Aligned" : level === "near" ? "Almost Aligned" : "Not Aligned";
+    if (level !== "good") {
+      if (view.scale > 1.07) hint = "Step Back";
+      else if (view.scale < 0.93) hint = "Move Closer";
+      else if (Math.abs(view.rotation) > 4) hint = "Level the Camera";
+      else hint = "Follow the Arrow";
+    }
+  }
+  pill.className = `cam-align-pill ${level}`;
+  pill.querySelector(".al-score").textContent = view ? `${alignScore(view.d)}%` : "";
+  if (align.level !== level || pill.querySelector(".al-label").textContent !== label) pill.querySelector(".al-label").textContent = label;
+  pill.querySelector(".al-hint").textContent = hint;
+  align.level = level;
+  drawAlign(view, level);
+}
+function drawAlign(view, level) {
+  const c = $("#cam-align"), stage = $("#cam-stage"), v = $("#cam-video");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = stage.clientWidth, H = stage.clientHeight;
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!view || !v.videoWidth) return;
+  // where the video sits in the stage (object-fit: contain)
+  const s = Math.min(W / v.videoWidth, H / v.videoHeight);
+  const rw = v.videoWidth * s, rh = v.videoHeight * s, rx = (W - rw) / 2, ry = (H - rh) / 2;
+  const P = (fx, fy) => [rx + fx * rw, ry + fy * rh];
+  const color = { good: "#2fd47a", near: "#ffc21a", off: "#ff5a5f" }[level];
+  // the Before frame, where it is in the live view
+  ctx.lineWidth = 2.5; ctx.strokeStyle = color; ctx.setLineDash(level === "good" ? [] : [10, 7]);
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) { const [x, y] = P(view.quad[2 * i], view.quad[2 * i + 1]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  // the live frame's centre, and an arrow to the Before frame's centre
+  const [cx, cy] = P(0.5, 0.5), [tx, ty] = P(0.5 + view.dx, 0.5 + view.dy);
+  ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.moveTo(cx - 15, cy); ctx.lineTo(cx - 5, cy); ctx.moveTo(cx + 5, cy); ctx.lineTo(cx + 15, cy);
+  ctx.moveTo(cx, cy - 15); ctx.lineTo(cx, cy - 5); ctx.moveTo(cx, cy + 5); ctx.lineTo(cx, cy + 15); ctx.stroke();
+  const len = Math.hypot(tx - cx, ty - cy);
+  if (level !== "good" && len > 14) {
+    const ang = Math.atan2(ty - cy, tx - cx), L = Math.min(len, Math.min(rw, rh) * 0.35);
+    const ex = cx + Math.cos(ang) * L, ey = cy + Math.sin(ang) * L;
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(cx + Math.cos(ang) * 14, cy + Math.sin(ang) * 14); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ex + Math.cos(ang) * 12, ey + Math.sin(ang) * 12);
+    ctx.lineTo(ex + Math.cos(ang + 2.5) * 12, ey + Math.sin(ang + 2.5) * 12); ctx.lineTo(ex + Math.cos(ang - 2.5) * 12, ey + Math.sin(ang - 2.5) * 12);
+    ctx.closePath(); ctx.fill();
+  }
 }
 
 function cycleTimer() {
@@ -937,6 +1100,7 @@ async function camShutter() {
   try {
     const f = $("#cam-flash");
     f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
+    if (role === "after") align.atCapture = align.on && align.view ? { score: alignScore(align.view.d), level: alignLevel(align.view.d) } : null;
     setShot(role, await grabFrame(role));
     if (role === "after") { await sleep(mq.still.matches ? 0 : 420); useShots(); }
   } catch (e) {
@@ -950,6 +1114,11 @@ async function camShutter() {
 function useShots() {
   const { before, after } = cam.shots;
   if (!before || !after) return;
+  const atCapture = align.atCapture;
+  align.atCapture = null;
+  if (atCapture && atCapture.level !== "good" && !state.opts.register) {
+    setTimeout(() => toast(`The two shots were ${atCapture.score}% aligned. If the camera moved between them, turn on Align Photos in Settings.`, "info", 7000), 600);
+  }
   closeCam();
   setSlotFile("before", before);
   setSlotFile("after", after);
@@ -1512,18 +1681,47 @@ function bindSwipeKnob() {
 
 /* fullscreen */
 function toggleFullscreen(el, btn) {
-  if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+  // only leave full screen when this element is it: the viewer nests over app full screen
+  if (document.fullscreenElement === el) { document.exitFullscreen().catch(() => {}); return; }
+  if (el.classList.contains("pseudo-fs")) { togglePseudoFs(el, btn); return; }
   if (el.requestFullscreen && document.fullscreenEnabled) {
     el.requestFullscreen().catch(() => togglePseudoFs(el, btn));
   } else togglePseudoFs(el, btn);
 }
+/* Full screen for the whole app (the header button, and the phone menu). The Fullscreen API
+   where the browser has it (Android, desktop, iPad); otherwise, as on iPhone Safari, an
+   immersive mode that hides the header, the metric chips and the tab bar. Added to the home
+   screen, the app also opens full screen from its manifest. */
+const fsApiOk = () => !!(document.documentElement.requestFullscreen && document.fullscreenEnabled);
+const appIsFs = () => document.fullscreenElement === document.documentElement || document.documentElement.classList.contains("app-immersive");
+function toggleAppFullscreen() {
+  const root = document.documentElement;
+  if (root.classList.contains("app-immersive")) { setImmersive(false); return; }
+  if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+  if (fsApiOk()) root.requestFullscreen({ navigationUI: "hide" }).catch(() => setImmersive(true));
+  else setImmersive(true);
+}
+function setImmersive(on) {
+  document.documentElement.classList.toggle("app-immersive", on);
+  $("#btn-immersive-exit").hidden = !on;
+  syncFsButton();
+  if (on) { window.scrollTo(0, 1); if (!store.get("cyws-immersive-tip")) { store.set("cyws-immersive-tip", "1"); toast("Full screen. For the whole screen, add this page to the home screen.", "info", 4500); } }
+  setTimeout(() => { layoutOverlay(); applySwipe(); syncStrip(); }, 60);
+}
+function syncFsButton() {
+  const on = appIsFs(), b = $("#btn-fs");
+  b.classList.toggle("is-fs", on);
+  b.setAttribute("aria-pressed", String(on));
+  b.title = on ? "Exit Full Screen" : "Full Screen";
+}
+
 function togglePseudoFs(el, btn) {
   const on = el.classList.toggle("pseudo-fs");
   btn.classList.toggle("is-fs", on);
   setTimeout(() => { layoutOverlay(); applySwipe(); syncStrip(); }, 50);
 }
 function exitViewerFs() {
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (document.fullscreenElement === $("#viewer")) document.exitFullscreen().catch(() => {});
   const v = $("#viewer");
   if (v.classList.contains("pseudo-fs")) togglePseudoFs(v, $("#btn-vfs"));
 }
@@ -1869,13 +2067,14 @@ function bind() {
   $("#btn-home").addEventListener("click", goHome);
   $("#brand").addEventListener("click", (e) => { e.preventDefault(); goHome(); });
   $("#btn-link").addEventListener("click", copyLink);
-  $("#btn-fs").addEventListener("click", () => toggleFullscreen(document.documentElement, $("#btn-fs")));
+  $("#btn-fs").addEventListener("click", toggleAppFullscreen);
+  $("#btn-immersive-exit").addEventListener("click", () => setImmersive(false));
   $("#btn-vfs").addEventListener("click", () => toggleFullscreen($("#viewer"), $("#btn-vfs")));
   $("#btn-fs-close").addEventListener("click", exitViewerFs);
   $("#tb-scroll").addEventListener("scroll", syncStrip, { passive: true });
   document.addEventListener("fullscreenchange", () => {
     const fs = document.fullscreenElement;
-    $("#btn-fs").classList.toggle("is-fs", fs === document.documentElement);
+    syncFsButton();
     $("#btn-vfs").classList.toggle("is-fs", fs === $("#viewer"));
     setTimeout(() => { layoutOverlay(); applySwipe(); }, 60);
   });
@@ -1884,6 +2083,8 @@ function bind() {
   $("#btn-menu").addEventListener("click", () => {
     if (mq.phone.matches) {
       openSheet("Neat Change Studio", [
+        { icon: appIsFs() ? "i-shrink" : "i-expand", label: appIsFs() ? "Exit Full Screen" : "Full Screen", run: toggleAppFullscreen },
+        { icon: effectiveTheme() === "dark" ? "i-sun" : "i-moon", label: effectiveTheme() === "dark" ? "Light Mode" : "Dark Mode", run: toggleTheme },
         { icon: "i-home", label: "Back to Start", run: goHome },
         { icon: "i-link", label: "Copy a Link to This View", run: copyLink },
         { icon: "i-play", label: "Run the Whole Test Set", run: () => { setTab("results"); runAll(); } },
@@ -1949,6 +2150,7 @@ function bind() {
   $("#cam-flip").addEventListener("click", () => { if (cam.devices.length > 1) { cam.dev = (cam.dev + 1) % cam.devices.length; startStream(); } });
   $("#cam-ghost-btn").addEventListener("click", () => { cam.ghost = !cam.ghost; renderCam(); });
   $("#cam-timer").addEventListener("click", cycleTimer);
+  $("#cam-align-btn").addEventListener("click", toggleAlign);
   $$(".cam-shot").forEach((b) => b.addEventListener("click", () => { if (cam.shots[b.dataset.role]) setShot(b.dataset.role, null); }));
   $("#cam-msg").addEventListener("click", (e) => { if (e.target.closest("[data-cam-retry]")) startStream(); });
   $("#cam").addEventListener("keydown", (e) => {
@@ -2061,6 +2263,7 @@ function bind() {
       if (!$("#sheet").hidden) { closeSheet(); return; }
       if ($("#workspace").classList.contains("rail-open")) { setDrawer(false); return; }
       if ($("#viewer").classList.contains("pseudo-fs")) { togglePseudoFs($("#viewer"), $("#btn-vfs")); return; }
+      if (document.documentElement.classList.contains("app-immersive")) { setImmersive(false); return; }
       if (state.zoom.s > 1) { resetZoom(); return; }
       if (state.pinned != null) { pin(state.pinned); return; }
       return;

@@ -171,7 +171,7 @@ Pick a test pair or upload two photos (on a phone you can take them with the cam
 
 ![Run All Pairs: the 28 test pairs run one after another on the MLA, filling the table, and end at 33 of 47 changes found with 2 false alarms in 15 no-change pairs](docs/runall.gif)
 
-**Webcam.** Capture **Before**, change something, then capture **After**. A self-timer (3, 5 or 10 s) counts down before each shot, and a faint ghost of Before helps line up After. **Watch Live** then compares every new frame with Before and keeps the result up to date. Here the camera is fed one of the test pairs.
+**Webcam.** Capture **Before**, change something, then capture **After**. A self-timer (3, 5 or 10 s) counts down before each shot, and a faint ghost of Before helps line up After. While you line up After, an **alignment check** compares the camera with Before in the browser (OpenCV.js in a Web Worker: ORB matches and a RANSAC fit): it shows a score (Aligned, Almost, Not Aligned), the Before frame's outline on the live view, an arrow to move the camera by, and hints such as Step Back or Level the Camera. The **Align** button turns it on and off, and the choice is remembered. If After is taken while it is not aligned, the demo suggests turning on Align Photos. **Watch Live** then compares every new frame with Before and keeps the result up to date. Here the camera is fed one of the test pairs.
 
 ![The webcam panel: a 3 s countdown captures Before, the scene changes, After is captured and detected, then Watch Live keeps detecting while a small live preview floats over the result](docs/webcam.gif)
 
@@ -179,7 +179,7 @@ Pick a test pair or upload two photos (on a phone you can take them with the cam
 
 ![Settings → Model: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up](docs/models.gif)
 
-**On a phone.** The same page, with a tab bar.
+**On a phone.** The same page, with a tab bar. The header has buttons for full screen and for dark or light mode, and the ☰ menu has both too. Where the browser has no full-screen support (iPhone Safari), full screen hides the header and the metric chips instead; adding the page to the home screen opens it full screen (the demo has a web app manifest).
 
 <table>
 <tr>

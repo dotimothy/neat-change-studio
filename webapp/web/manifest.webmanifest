@@ -1,0 +1,16 @@
+{
+  "name": "Neat Change Studio",
+  "short_name": "Change Studio",
+  "description": "Before/after change detection with CYWS on the SiMa.ai Modalix MLA.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
+  "background_color": "#0c0f14",
+  "theme_color": "#0c0f14",
+  "icons": [
+    {"src": "/static/assets/neat-change-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/static/assets/neat-change-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "/static/assets/neat-change.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}

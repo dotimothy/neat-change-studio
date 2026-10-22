@@ -9,6 +9,11 @@
 <link rel="icon" type="image/svg+xml" href="/static/assets/neat-change.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/neat-change-32.png">
 <link rel="apple-touch-icon" href="/static/assets/neat-change-192.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Change Studio">
 <link rel="preload" href="/static/assets/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/assets/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin>
 <script>
@@ -79,7 +84,7 @@
       </button>
       <button type="button" class="icon-btn hide-phone" id="btn-home" title="Back to start" aria-label="Back to start"><svg><use href="#i-home"/></svg></button>
       <button type="button" class="icon-btn hide-phone" id="btn-link" title="Copy a link to this view" aria-label="Copy a link to this view"><svg><use href="#i-link"/></svg></button>
-      <button type="button" class="icon-btn desktop-only" id="btn-fs" title="Full screen" aria-label="Toggle full screen"><svg class="ic-enter"><use href="#i-expand"/></svg><svg class="ic-exit"><use href="#i-shrink"/></svg></button>
+      <button type="button" class="icon-btn" id="btn-fs" title="Full Screen" aria-label="Full screen" aria-pressed="false"><svg class="ic-enter"><use href="#i-expand"/></svg><svg class="ic-exit"><use href="#i-shrink"/></svg></button>
       <button type="button" class="icon-btn" id="btn-settings" title="Settings" aria-label="Settings" aria-controls="rail"><svg><use href="#i-sliders"/></svg></button>
       <button type="button" class="icon-btn" id="btn-theme" title="Toggle dark / light" aria-label="Toggle dark or light theme"><svg class="ic-moon"><use href="#i-moon"/></svg><svg class="ic-sun"><use href="#i-sun"/></svg></button>
       <button type="button" class="icon-btn not-desktop" id="btn-menu" title="Menu" aria-label="Open menu" aria-expanded="false" aria-controls="rail"><svg class="ic-menu"><use href="#i-menu"/></svg><svg class="ic-close"><use href="#i-close"/></svg></button>
@@ -397,6 +402,8 @@
       <video id="cam-video" playsinline muted autoplay></video>
       <img class="cam-ghost" id="cam-ghost" alt="" hidden>
       <div class="cam-guide" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <canvas class="cam-align" id="cam-align" aria-hidden="true"></canvas>
+      <div class="cam-align-pill" id="cam-align-pill" hidden><span class="al-dot" aria-hidden="true"></span><b class="al-score" aria-hidden="true"></b><span class="al-label" role="status"></span><span class="al-hint"></span></div>
       <div class="cam-flash" id="cam-flash"></div>
       <div class="cam-count" id="cam-count" hidden aria-live="assertive">
         <div class="cc-dial">
@@ -416,6 +423,7 @@
     </div>
     <div class="cam-actions">
       <button type="button" class="btn" id="cam-timer" title="Self-Timer: Wait Before Each Capture"><svg><use href="#i-timer"/></svg><span>Timer</span><b class="cam-timer-v" id="cam-timer-v">Off</b></button>
+      <button type="button" class="btn" id="cam-align-btn" aria-pressed="true" title="Alignment Check: how well the camera lines up with the Before shot"><svg><use href="#i-target"/></svg><span>Align</span></button>
       <button type="button" class="btn" id="cam-ghost-btn" aria-pressed="true" title="Show the Before frame over the camera, to line up the After shot"><svg><use href="#i-ghost"/></svg><span>Ghost</span></button>
       <button type="button" class="btn spectrum" id="cam-live" disabled title="Capture Before first"><svg><use href="#i-live"/></svg><span>Watch Live</span></button>
     </div>
@@ -454,6 +462,9 @@
     <button type="button" class="btn block" id="msw-close" hidden>Close</button>
   </div>
 </div>
+
+<!-- Immersive full screen (browsers without the Fullscreen API, such as iPhone Safari): the way out -->
+<button type="button" class="immersive-exit" id="btn-immersive-exit" title="Exit Full Screen" aria-label="Exit full screen" hidden><svg><use href="#i-shrink"/></svg></button>
 
 <div class="toasts" id="toasts" aria-live="assertive" aria-atomic="false"></div>
 <input type="file" id="file-pick" accept="image/*" hidden>

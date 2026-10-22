@@ -448,8 +448,9 @@
           <p class="card-title">Webcam</p>
           <h3>Capture, Change, Capture</h3>
           <p>Capture Before, change something, then capture After. A self-timer (3, 5 or 10 s) counts down before each shot, and a faint ghost of Before helps line up After.</p>
+          <p>While you line up After, an alignment check compares the camera with Before in the browser, with OpenCV.js in a Web Worker. It scores the match, draws the Before frame's outline on the live view and an arrow to move the camera by, and can be turned off with the Align button.</p>
           <p>Watch Live then compares every new frame with Before and keeps the result up to date, at about 2 frames/s on the board with a 1080p webcam, most of it capture and upload. Browsers allow the camera only on HTTPS, so port 8098 speaks both HTTP and HTTPS.</p>
-          <div class="pills"><span class="pill">Timer <span class="n">3 · 5 · 10 s</span></span><span class="pill">Ghost</span><span class="pill on">Watch Live</span></div>
+          <div class="pills"><span class="pill">Timer <span class="n">3 · 5 · 10 s</span></span><span class="pill">Align</span><span class="pill">Ghost</span><span class="pill on">Watch Live</span></div>
         </div>
       </article>
 
