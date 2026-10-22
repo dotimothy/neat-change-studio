@@ -1249,3 +1249,4 @@ table.all .tdot.none { background: var(--text-3); }
   .workspace.rail-collapsed .rail-toggle svg { transform: rotate(180deg); }
 }
 .mm-stats > span { white-space: nowrap; }
+.models-src code { font-family: var(--code-font); font-size: 10.5px; color: var(--text-2); overflow-wrap: anywhere; }

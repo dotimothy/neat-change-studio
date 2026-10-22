@@ -1,6 +1,83 @@
 # Neat Change Studio
 
+<p align="center"><img src="docs/assets/brand/neat-change.svg" alt="Neat Change Studio logo: a before frame and an after frame, with a new object boxed, and the Neat sparkle" width="128"></p>
+
 Before/after change detection with CYWS on the SiMa.ai Modalix MLA, through NEAT.
+
+## Install
+
+Three commands on a Modalix DevKit with the NEAT SDK and its `pyneat` environment (see [What you need](#what-you-need)), with internet access for the first install.
+
+**01 Install.** Fetch the source into `./neat-change-studio`:
+
+```bash
+cd /media/nvme && curl -fsSL https://raw.githubusercontent.com/dotimothy/neat-change-studio/main/install.sh | bash
+```
+
+`STUDIO_DIR` (or a first argument, `... | bash -s -- /path`) picks another directory, `STUDIO_BRANCH` a branch or tag, `STUDIO_REPO` another repository, and `GITHUB_TOKEN` a token for a private one. `STUDIO_ARCHIVE=/path/or/url.tar.gz` installs from an archive instead (for a board without internet), and `STUDIO_SETUP=1` runs step 02 straight away.
+
+**02 Set up.**
+
+```bash
+cd neat-change-studio && ./setup.sh
+```
+
+It checks the `pyneat` venv (`~/pyneat`, or `PYNEAT_VENV`) and installs the Python packages it is missing (numpy, opencv-python-headless with SIFT, pillow, flask), downloads a model from Hugging Face, makes the self-signed HTTPS certificate for the web demo, and adds a `neat-change` shell alias and, when the board has a desktop, a desktop icon. In a terminal it asks about the model, the alias and the desktop icon; these variables decide without asking:
+
+| variable | meaning |
+|---|---|
+| `CYWS_MODELS=bf16\|w8a16\|all\|none` | models to download. Default in a terminal: bf16 (asked only while the models directory has none); without a terminal: none |
+| `CREATE_ALIAS=1\|0` | the `neat-change` alias in `~/.bashrc` (when there is one), the first of `~/.bash_profile`, `~/.bash_login` and `~/.profile` that exists (`~/.bash_profile` when none does), and `~/.zshrc` when your shell is zsh. Default in a terminal: yes; without a terminal: 0 |
+| `CREATE_DESKTOP_ICON=1\|0` | the desktop icon and menu entry. Default without a terminal: 0 |
+
+`./setup.sh --check-only` only checks and changes nothing. `./setup.sh --check` also loads the model on the MLA and runs one synthetic pair (it refuses while another MLA app runs). `./setup.sh --help` lists every option.
+
+**03 Run.** Open a new shell first (or run `source ~/.bashrc`): the alias is not yet defined in the shell that ran `./setup.sh`. Without the alias, use `webapp/run.sh` in its place.
+
+```bash
+neat-change                       # the web demo at https://<board-ip>:8098 (and http://), alias for webapp/run.sh
+neat-change --daemon              # the same, in the background (log: webapp/server.log)
+neat-change --stop
+./run.sh --mode static --before before.jpg --after after.jpg --out out/one     # the CLI, one pair
+./run.sh --mode dataset --dataset-dir data/testCYWS --out out/testcyws         # a whole dataset, with metrics against the GT masks
+```
+
+Only one app may use the MLA at a time, so stop other demos first. `run.sh` activates `~/pyneat` (or `PYNEAT_VENV`) and defaults to `--model-path <models directory>/cyws_bf16_mpk.tar.gz` (or the only model there).
+
+**Update.**
+
+```bash
+neat-change update                # or: webapp/run.sh update
+```
+
+This downloads the latest `install.sh` and runs it with `STUDIO_UPDATE=1`, which fetches the latest source over the install. It keeps the models directory, `data/`, `out/`, the web demo's certificate, uploads and cache, and the other files `.gitignore` lists (`build/`, `third_party/`, virtualenvs, `*.onnx`, `.env` and so on), then runs `./setup.sh` again without prompts. With `STUDIO_ARCHIVE`, or when the download fails, it uses the install's own `install.sh`. On an install whose `webapp/run.sh` has no `update` yet, run `curl -fsSL https://raw.githubusercontent.com/dotimothy/neat-change-studio/main/install.sh | STUDIO_UPDATE=1 STUDIO_DIR=/path/to/install bash` instead. Restart a running demo afterwards (`neat-change --stop && neat-change --daemon`).
+
+### Models
+
+The compiled models are on Hugging Face at [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws): `bf16` (119 MB, the default, most accurate) and `w8a16` (72 MB, faster).
+
+They are kept in one **models directory**, shared by every install and left alone by updates, like Neat GenAI Studio's `/media/nvme/llima/models`. It is `/media/nvme/models/cyws` on a DevKit (`models/` in the app when there is no `/media/nvme`). `./setup.sh --models-dir DIR` moves it and remembers the choice (in `.models-dir`) for the web demo, the CLI and the alias; `CYWS_MODELS_DIR=DIR` does the same for one command; `./setup.sh --models-dir default` goes back. Setup names any models left in an app's own `models/` folder and the `mv` that brings them over. Besides `./setup.sh`, these download into it:
+
+```bash
+webapp/run.sh --fetch bf16        # or w8a16, or all
+webapp/run.sh --list-hub          # what Hugging Face has, and what is here
+```
+
+The web demo can also download them: **Settings → Model**, then **Download**; the panel shows which folder they go to. Every download is checked against its SHA-256. To compile the model yourself, see [Building it from scratch](#building-it-from-scratch).
+
+### From a host instead: deploy.sh
+
+`deploy.sh` copies the app, the web demo and the scripts from a clone on the host to the board over ssh and rsync, then runs `setup.sh` there (without prompts, so it downloads no model unless you deployed one). `BOARD` is required; `REMOTE` defaults to `/media/nvme/cyws`, and a deployed MPK goes to the board's models directory, `/media/nvme/models/cyws` (or `CYWS_MODELS_DIR`). It refuses while another MLA app runs on the board, unless `FORCE=1`.
+
+```bash
+BOARD=sima@<devkit-ip> ./deploy.sh
+# or also copy a model you compiled yourself:
+BOARD=sima@<devkit-ip> ./deploy.sh build/bf16/cyws_bf16_mpk.tar.gz
+```
+
+Then, on the board, `cd /media/nvme/cyws`, `webapp/run.sh --fetch bf16` (unless you deployed an MPK) and the commands of step 03, with `webapp/run.sh` in place of `neat-change`.
+
+## About
 
 Give it a **before** photo and an **after** photo of the same scene. It returns boxes around what changed (labelled *appeared*, *disappeared* or *changed*), a change mask and an overlay. The model is the original **"The Change You Want to See"** (Sachdeva & Zisserman, WACV 2023; [paper code](https://github.com/ragavsachdeva/The-Change-You-Want-to-See)): a Siamese ResNet-50 U-Net with co-attention and a CenterNet head. It runs on the Modalix MLA through NEAT (`pyneat`) as **one MLA ELF with no A65 stages**, at about 35 ms per 256×256 pair in bf16.
 
@@ -15,49 +92,16 @@ It is a sibling of [Neat Decision Studio](https://github.com/dotimothy/neat-deci
 **To run it:**
 - A Modalix DevKit with the NEAT SDK 0.5.0 (platform 2.1.3) and its `pyneat` venv. The scripts look for it in `~/pyneat`; set `PYNEAT_VENV` if it is elsewhere.
 - ssh from the host to the board (passwordless is easiest; `deploy.sh` and `run_all.sh` use ssh and rsync).
-- On the board, numpy, OpenCV (4.4 or later, for SIFT) and Pillow in the pyneat venv, and Flask for the web demo. `./setup.sh` checks them and `./setup.sh --install` installs what is missing ([requirements.txt](requirements.txt)).
+- On the board, numpy, OpenCV (4.4 or later, for SIFT) and Pillow in the pyneat venv, and Flask for the web demo. `./setup.sh` checks them and installs what is missing ([requirements.txt](requirements.txt)).
 
 **To build the model from scratch** (not needed if you download it):
 - [uv](https://docs.astral.sh/uv/) and Python 3 on the host, with PyTorch installed. `run_all.sh` makes `.venv` with `--system-site-packages`, so it reuses that PyTorch; the other host packages are in [requirements-dev.txt](requirements-dev.txt).
 - The SiMa NEAT SDK container with the Model Compiler. `compile/compile.sh` runs the compiler with `docker exec` in the container named by `CONTAINER` (default `ghcr.io-sima-neat-sdk-latest`). The repo must be under the host folder mounted as the container's `/workspace`, given by `WS_HOST` (default `~/SDK/NEAT/workspace`).
 - `pyneat` comes from the NEAT SDK, and `afe` / `sima_utils` from the Model Compiler container. Neither is on PyPI.
 
-## Get the model
+## The CLI
 
-The compiled models are on Hugging Face at [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws): `bf16` (the default, most accurate) and `w8a16`. Any of these puts them in `models/`:
-
-```bash
-webapp/run.sh --fetch bf16       # on the board; or w8a16, or all
-webapp/run.sh --list-hub         # what Hugging Face has, and what is here
-./setup.sh --fetch               # check the board environment, then fetch bf16 (--fetch=w8a16, --fetch=all)
-```
-
-The web demo can also download them: **Settings → Model**, then **Download**. Every download is checked against its SHA-256.
-
-To compile the model yourself, see [Building it from scratch](#building-it-from-scratch).
-
-## Quick start on the DevKit
-
-From the host, copy the app, the web demo and the scripts to the board. `BOARD` is required; `REMOTE` defaults to `/media/nvme/cyws`. It refuses while another MLA app runs on the board, unless `FORCE=1`.
-
-```bash
-BOARD=sima@<devkit-ip> ./deploy.sh
-# or also copy a model you compiled yourself:
-BOARD=sima@<devkit-ip> ./deploy.sh build/bf16/cyws_bf16_mpk.tar.gz
-```
-
-Then, on the board:
-
-```bash
-cd /media/nvme/cyws
-webapp/run.sh --fetch bf16       # unless you deployed an MPK
-# one pair
-./run.sh --mode static --before before.jpg --after after.jpg --out out/one
-# a whole dataset, with metrics against the GT masks
-./run.sh --mode dataset --dataset-dir data/testCYWS --out out/testcyws
-```
-
-`run.sh` activates `~/pyneat` (or `PYNEAT_VENV`) and defaults to `--model-path models/cyws_bf16_mpk.tar.gz`. Only one app may use the MLA at a time, so stop other demos first.
+`./run.sh` runs one pair (`--mode static --before … --after …`) or a whole dataset (`--mode dataset --dataset-dir …`) on the MLA and writes the results to `--out`.
 
 ### Presets
 
@@ -100,8 +144,8 @@ The default location is `data/testCYWS` in the repo; set `CYWS_DATA` to use anot
 
 ```bash
 # on the board (stop other MLA apps first)
-/media/nvme/cyws/webapp/run.sh --daemon      # http://<board-ip>:8098/  (https:// on the same port for the webcam)
-/media/nvme/cyws/webapp/run.sh --stop
+neat-change --daemon      # or webapp/run.sh --daemon: http://<board-ip>:8098/  (https:// on the same port for the webcam)
+neat-change --stop
 ```
 
 Pick a test pair or upload two photos (on a phone you can take them with the camera). Choose a preset or adjust settings, and see the boxes, heatmap, tiles and timing. It also works on phones. Every screenshot here was taken on a Modalix DevKit, so the timings are the board's own.
@@ -174,7 +218,7 @@ The `onnx` backend uses `build/onnx/cyws_fused.onnx`, which `model/fetch_upstrea
 
 The right-hand panel collapses with the round button on its edge, and the header's Settings button opens it at Settings.
 
-**Webcam:** the webcam button captures Before, then After, from the browser's camera and detects. **Watch Live** compares every new frame with Before and updates the view (about 2 frames/s on the board with a 1080p webcam, most of it capture and upload). Browsers only allow the camera on HTTPS pages, so port 8098 speaks both HTTP and HTTPS (the server checks whether each connection starts with a TLS handshake). `webapp/run.sh` makes a self-signed certificate in `webapp/certs/` on first start (with `openssl`), so the browser warns about it once. `server.py` run directly uses `--cert` / `--key` (default `webapp/certs/cert.pem` and `key.pem`) if they exist, and serves HTTP only otherwise. The plain-HTTP page links to the HTTPS one when you open the webcam. `--no-https` turns HTTPS off.
+**Webcam:** the webcam button captures Before, then After, from the browser's camera and detects. **Watch Live** compares every new frame with Before and updates the view (about 2 frames/s on the board with a 1080p webcam, most of it capture and upload). Browsers only allow the camera on HTTPS pages, so port 8098 speaks both HTTP and HTTPS (the server checks whether each connection starts with a TLS handshake). `./setup.sh` (or `webapp/run.sh` on first start) makes a self-signed certificate in `webapp/certs/` with `openssl` (`webapp/make_cert.sh`), so the browser warns about it once. `server.py` run directly uses `--cert` / `--key` (default `webapp/certs/cert.pem` and `key.pem`) if they exist, and serves HTTP only otherwise. The plain-HTTP page links to the HTTPS one when you open the webcam. `--no-https` turns HTTPS off.
 
 ## Building it from scratch
 
@@ -211,7 +255,7 @@ There is one fused output, `(10, 256, 256)` float32, with channels `heat_b, heat
 | `tools/` | `publish_hub.py`, for maintainers: uploads the MPKs to Hugging Face and regenerates `models.json` (the list the app reads) and the model card. Needs `huggingface_hub` and write access to the repository. |
 | `results/` | Small result files behind the numbers in the report: the parameter sweep (`sweep_RESULTS.md`) and the board-vs-FP32 comparisons (`eval/`). |
 | `tests/` | pytest suite (host, no board needed). |
-| `run.sh`, `setup.sh`, `deploy.sh`, `run_all.sh` | board runner, board environment check and model fetch, deploy, full reproduction. |
+| `install.sh`, `setup.sh`, `run.sh`, `deploy.sh`, `run_all.sh` | install or update on the board, board setup (packages, model, certificate, alias, desktop icon), CLI runner, deploy from a host, full reproduction. |
 
 Not in the repository (made by the scripts): `build/`, `third_party/`, `.venv/`, `models/`, `out/` and `data/testCYWS/`.
 

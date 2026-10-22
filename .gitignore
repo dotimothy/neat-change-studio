@@ -36,3 +36,6 @@ __pycache__/
 .idea/
 *.swp
 *~
+
+# the models directory setup.sh --models-dir remembered for this install
+/.models-dir

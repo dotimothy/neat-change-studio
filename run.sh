@@ -4,8 +4,8 @@
 #   ./run.sh --mode static --before b.jpg --after a.jpg
 #   ./run.sh --mode dataset --dataset-dir data/testCYWS --levels 0,1 --tiles gated --bench
 #
-# Defaults added when not given: --model-path models/cyws_bf16_mpk.tar.gz (or the
-# only MPK in models/) for the neat backend, and --out ./out. Relative paths are
+# Defaults added when not given: --model-path <models dir>/cyws_bf16_mpk.tar.gz (or
+# the only MPK there; the models dir is set by webapp/models_dir.sh) for the neat backend, and --out ./out. Relative paths are
 # resolved against the directory you call this from, not app/.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -47,15 +47,18 @@ while (($#)); do
 done
 
 if ((!has_model)) && [[ -z "$backend" || "$backend" == neat ]]; then
-  mpk="$HERE/models/cyws_bf16_mpk.tar.gz"
+  # shellcheck source=webapp/models_dir.sh
+  source "$HERE/webapp/models_dir.sh"
+  MODELS_DIR="$(cyws_models_dir "$HERE")"
+  mpk="$MODELS_DIR/cyws_bf16_mpk.tar.gz"
   if [[ ! -f "$mpk" ]]; then
-    shopt -s nullglob; found=("$HERE"/models/*_mpk.tar.gz); shopt -u nullglob
+    shopt -s nullglob; found=("$MODELS_DIR"/*_mpk.tar.gz); shopt -u nullglob
     ((${#found[@]} == 1)) && mpk="${found[0]}" || mpk=""
   fi
   if [[ -n "$mpk" ]]; then
     args+=(--model-path "$mpk")
   else
-    echo "No model in $HERE/models. Download one from Hugging Face first:" >&2
+    echo "No model in $MODELS_DIR. Download one from Hugging Face first:" >&2
     echo "  $HERE/webapp/run.sh --fetch bf16      (or: w8a16, all)" >&2
     exit 1
   fi

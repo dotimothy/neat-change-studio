@@ -96,11 +96,16 @@
   }
   $$(".copy-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      var pre = $("pre", btn.closest(".code"));
-      if (!pre) return;
-      var clone = pre.cloneNode(true);
-      $$(".p", clone).forEach(function (n) { n.remove(); }); // skip prompt markers
-      var text = clone.textContent.replace(/\s+$/, "") + "\n";
+      var text = btn.getAttribute("data-copy"); // a block may copy just its first command
+      if (!text) {
+        var pre = $("pre", btn.closest(".code"));
+        if (!pre) return;
+        var clone = pre.cloneNode(true);
+        $$(".p, .c", clone).forEach(function (n) { n.remove(); }); // skip prompt markers and comments
+        text = clone.textContent.split("\n").map(function (l) { return l.replace(/\s+$/, ""); })
+          .filter(function (l) { return l; }).join("\n");
+      }
+      text = text.replace(/\s+$/, "") + "\n";
       var label = $(".lbl", btn);
       copyText(text).then(function () {
         btn.classList.add("done"); if (label) label.textContent = "Copied";

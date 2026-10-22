@@ -250,3 +250,19 @@ def test_fetch_command_downloads_and_skips(tmp_path, monkeypatch, capsys):
     assert server.hub_command(args) == 0
     listing = capsys.readouterr().out
     assert "tiny" in listing and "on board" in listing
+
+
+def test_default_models_dir_precedence(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "ROOT", tmp_path)
+    monkeypatch.setenv("CYWS_MODELS_DIR", str(tmp_path / "env"))
+    assert server.default_models_dir() == tmp_path / "env"
+    monkeypatch.delenv("CYWS_MODELS_DIR")
+    (tmp_path / ".models-dir").write_text(str(tmp_path / "remembered") + "\n")
+    assert server.default_models_dir() == tmp_path / "remembered"
+    (tmp_path / ".models-dir").unlink()
+    expect = Path("/media/nvme/models/cyws") if Path("/media/nvme").is_dir() else tmp_path / "models"
+    assert server.default_models_dir() == expect
+
+
+def test_free_bytes_of_a_missing_dir(tmp_path):
+    assert server._free_bytes(tmp_path / "not" / "yet") > 0

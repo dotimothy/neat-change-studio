@@ -284,7 +284,7 @@ function renderModels(s) {
   if (hub.repo) {
     src.innerHTML = `${hub.error ? `<span class="mm-err">${esc(hub.error)}</span> ` : ""}Models download from Hugging Face:
       <a href="${esc(hub.page)}" target="_blank" rel="noopener">${esc(hub.repo)}<svg><use href="#i-external"/></svg></a>${hub.collection
-        ? ` · <a href="${esc(hub.collection)}" target="_blank" rel="noopener">Collection<svg><use href="#i-external"/></svg></a>` : ""}${hub.free_bytes ? ` · ${fmtMB(hub.free_bytes)} Free` : ""}`;
+        ? ` · <a href="${esc(hub.collection)}" target="_blank" rel="noopener">Collection<svg><use href="#i-external"/></svg></a>` : ""}${hub.free_bytes ? ` · ${fmtMB(hub.free_bytes)} Free` : ""}${hub.directory ? `<br>Folder: <code>${esc(hub.directory)}</code>` : ""}`;
   } else src.textContent = "";
 }
 

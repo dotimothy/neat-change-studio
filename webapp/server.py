@@ -63,6 +63,29 @@ MODELS = OrderedDict([
     ("bf16", {"file": "cyws_bf16_mpk.tar.gz", "label": "bf16 · Most Faithful"}),
     ("w8a16", {"file": "cyws_w8a16_mpk.tar.gz", "label": "w8a16 · Faster"}),
 ])
+def _free_bytes(path: Path) -> int:
+    """Free space where `path` is, or would be once created."""
+    path = Path(path)
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    return shutil.disk_usage(path).free
+
+
+def default_models_dir() -> Path:
+    """Where the compiled models live, shared by every install and kept across updates (like Neat
+    GenAI Studio's /media/nvme/llima/models): CYWS_MODELS_DIR, else what setup.sh --models-dir
+    remembered in .models-dir, else /media/nvme/models/cyws on a DevKit, else models/ here."""
+    env = os.environ.get("CYWS_MODELS_DIR", "").strip()
+    if env:
+        return Path(env).expanduser()
+    remembered = ROOT / ".models-dir"
+    if remembered.is_file() and remembered.read_text().strip():
+        return Path(remembered.read_text().strip()).expanduser()
+    if Path("/media/nvme").is_dir():
+        return Path("/media/nvme/models/cyws")
+    return ROOT / "models"
+
+
 HUB_REPO = "dotimothy/sima-cyws"   # compiled models on Hugging Face (tools/publish_hub.py)
 HUB_COLLECTION = "dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b"
 
@@ -233,7 +256,7 @@ class Hub:
         return {"repo": self.repo, "page": f"https://huggingface.co/{self.repo}",
                 "collection": f"https://huggingface.co/collections/{HUB_COLLECTION}" if self.repo == HUB_REPO else None,
                 "error": self._error, "listed": self._models is not None, "models": out,
-                "directory": str(self.dir), "free_bytes": shutil.disk_usage(self.dir).free}
+                "directory": str(self.dir), "free_bytes": _free_bytes(self.dir)}
 
     def download(self, name: str) -> None:
         e = self.models().get(name)
@@ -248,7 +271,7 @@ class Hub:
                 raise CywsError(f"{name} is already on this board")
             part = self._part(e)
             need = f["bytes"] - (part.stat().st_size if part.is_file() else 0)
-            free = shutil.disk_usage(self.dir).free
+            free = _free_bytes(self.dir)
             if free < need + self.SPARE:
                 raise CywsError(f"Not enough disk for {name}: {need >> 20} MB to fetch, {free >> 20} MB free")
             self._failed.pop(name, None)
@@ -321,7 +344,11 @@ class Hub:
 class Demo:
     def __init__(self, args: argparse.Namespace):
         self.args = args
-        self.models_dir = Path(args.models).resolve()
+        self.models_dir = Path(args.models).expanduser().resolve()
+        try:
+            self.models_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            log(f"cannot create the models directory {self.models_dir}: {e}")
         self.lock = threading.RLock()          # one pipeline run / model switch at a time
         self.backend = None
         self.model_name: str | None = None
@@ -806,7 +833,8 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=8098)
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--model", default="bf16", choices=list(MODELS))
-    ap.add_argument("--models", default=str(ROOT / "models"))
+    ap.add_argument("--models", default=str(default_models_dir()),
+                    help="the models directory (default: CYWS_MODELS_DIR, .models-dir, /media/nvme/models/cyws, or models/)")
     ap.add_argument("--data", default=os.environ.get("CYWS_DATA") or str(ROOT / "data/testCYWS"))
     ap.add_argument("--cache", default=str(ROOT / "webapp/cache"))
     ap.add_argument("--uploads", default=str(ROOT / "webapp/uploads"))

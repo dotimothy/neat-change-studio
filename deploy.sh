@@ -51,18 +51,20 @@ if [[ -n "$busy" ]]; then
   fi
 fi
 
-"${SSH[@]}" "$BOARD" "mkdir -p '$REMOTE/app' '$REMOTE/models' '$REMOTE/out'"
+# The board's models directory, shared by every install (webapp/models_dir.sh).
+RMODELS="${CYWS_MODELS_DIR:-/media/nvme/models/cyws}"
+"${SSH[@]}" "$BOARD" "mkdir -p '$REMOTE/app' '$RMODELS' '$REMOTE/out'"
 rsync -a --delete --exclude __pycache__ --exclude '*.pyc' -e "${SSH[*]}" "$HERE/app/" "$BOARD:$REMOTE/app/"
 rsync -a --delete --exclude __pycache__ -e "${SSH[*]}" "$HERE/bench/" "$BOARD:$REMOTE/bench/"
 # The web demo; keeps the board's own certificates, uploads, cache and log.
 rsync -a --delete --exclude __pycache__ --exclude '*.pyc' --exclude /certs --exclude /uploads \
   --exclude /cache --exclude /server.log -e "${SSH[*]}" "$HERE/webapp/" "$BOARD:$REMOTE/webapp/"
-extra=("$HERE/run.sh" "$HERE/setup.sh")
+extra=("$HERE/run.sh" "$HERE/setup.sh" "$HERE/install.sh")
 [[ -f "$HERE/README.md" ]] && extra+=("$HERE/README.md") || echo "note: no README.md yet, skipping"
 rsync -a -e "${SSH[*]}" "${extra[@]}" "$BOARD:$REMOTE/"
 if [[ -n "$MPK" ]]; then
-  rsync -a --checksum -e "${SSH[*]}" "$MPK" "$BOARD:$REMOTE/models/$(basename "$MPK")"
-  echo "model -> $REMOTE/models/$(basename "$MPK")"
+  rsync -a --checksum -e "${SSH[*]}" "$MPK" "$BOARD:$RMODELS/$(basename "$MPK")"
+  echo "model -> $RMODELS/$(basename "$MPK")"
 else
   echo "note: no MPK given (MPK=path or first argument); deploying the app only."
   echo "      On the board, fetch a model from Hugging Face with: $REMOTE/webapp/run.sh --fetch bf16"

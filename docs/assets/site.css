@@ -474,6 +474,19 @@ td strong, td b { color: var(--accent-text); font-weight: 600; }
 .start-grid h3 { font-size: 16px; margin-top: 4px; }
 .req-group + .req-group { margin-top: 18px; }
 .req-group h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text); }
+.steps { display: grid; gap: 16px; }
+.step {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 18px; align-items: start;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; box-shadow: var(--shadow-sm);
+}
+.step .n { font-family: var(--code-font); font-size: 12px; letter-spacing: .12em; color: var(--accent-text); font-weight: 600; padding-top: 3px; }
+.step h3 { margin: 0; }
+.step p { margin: 4px 0 0; color: var(--text-2); font-size: 14.5px; }
+.step .code { margin-top: 14px; }
+.start-more { margin-top: 16px; }
+.sub-title { font-size: 16px; margin: 4px 0 4px; }
+.stack .sub-title + .small { margin: 0 0 10px; }
+@media (max-width: 600px) { .step { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 18px; } }
 
 /* ============================ Models ============================ */
 .model-card { display: flex; flex-direction: column; gap: 14px; padding: 22px; overflow: hidden; }
@@ -495,23 +508,25 @@ td strong, td b { color: var(--accent-text); font-weight: 600; }
 .kv dd small { font-size: 11px; color: var(--text-3); font-weight: 400; }
 .mc-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
 
-/* ============================ Footer ============================ */
-.site-footer { margin-top: 88px; border-top: 1px solid var(--border); background: var(--surface); background: color-mix(in srgb, var(--surface) 55%, transparent); padding: 44px 0 36px; }
-.foot-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; }
-@media (max-width: 900px) { .foot-grid { grid-template-columns: minmax(0, 1fr); } }
-.site-footer p, .site-footer li { font-size: 14px; color: var(--text-2); }
-.site-footer ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
-.foot-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+/* ============================ License ============================ */
+.license-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .license-grid { grid-template-columns: minmax(0, 1fr); } }
+.license-grid ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.license-grid li { font-size: 14px; color: var(--text-2); }
+.license-grid .code { margin-top: 4px; }
+.foot-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 @media (min-width: 601px) { .foot-links { display: grid; grid-template-columns: repeat(2, max-content); } .foot-links .btn { justify-content: flex-start; } }
-.site-footer h2.card-title { margin: 0 0 12px; }
-.foot-base {
-  margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  font-size: 12.5px; color: var(--text-3);
-}
-.foot-base .brand-mark { height: 24px; }
-.foot-base .fb-brand { display: flex; align-items: center; gap: 10px; }
-.foot-base strong { color: var(--accent-strong); font-weight: 600; }
+
+/* ============================ Footer ============================ */
+/* Same footer as the other Neat Studio sites (Neat GenAI Studio). */
+/* As Neat GenAI Studio's footer. Its last section ends with clamp(64px, 9vw, 112px) of
+   padding; .section ends with 8px, so the margin makes up the same gap above the line. */
+.site-footer { margin-top: clamp(56px, calc(9vw - 8px), 104px); border-top: 1px solid var(--border); padding: 40px 0 48px; }
+.site-footer .wrap { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: center; justify-content: space-between; }
+.site-footer .links { display: flex; flex-wrap: wrap; gap: 8px 22px; font-family: var(--code-font); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.site-footer .links a { color: inherit; text-decoration: none; }
+.site-footer .links a:hover { color: var(--accent-text); }
+.site-footer small { font-family: var(--code-font); font-size: 10.5px; color: var(--text-3); letter-spacing: .04em; line-height: 1.6; }
 
 /* ============================ Animated screenshots ============================ */
 /* MP4 copies of the README GIFs, with a still poster. site.js plays them in view

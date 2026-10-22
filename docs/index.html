@@ -11,7 +11,9 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://timothydo.me/neat-change-studio/">
 <meta property="og:image" content="https://timothydo.me/neat-change-studio/result.png">
-<link rel="icon" type="image/png" href="assets/neat-mark.png">
+<link rel="icon" type="image/svg+xml" href="assets/brand/neat-change.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/brand/neat-change-32.png">
+<link rel="apple-touch-icon" href="assets/brand/neat-change-192.png">
 <script>
   // Mark JS as available and apply a saved theme before first paint (default: dark, or light when the OS prefers it).
   document.documentElement.classList.add("js");
@@ -48,17 +50,17 @@
 <header class="site-header">
   <div class="wrap header-row">
     <a class="brand" href="#top" aria-label="Neat Change Studio, back to top">
-      <img class="brand-mark" src="assets/neat-mark.png" alt="" width="48" height="32">
+      <img class="brand-mark" src="assets/brand/neat-change.svg" alt="" width="36" height="36">
       <span class="brand-text">
         <span class="brand-title">Neat Change Studio</span>
         <span class="brand-sub">Before/After Change Detection · CYWS on the Modalix MLA</span>
       </span>
     </a>
     <nav class="nav" id="nav" aria-label="Sections">
+      <a href="#start">Install</a>
       <a href="#how">How It Works</a>
       <a href="#demo">Web Demo</a>
       <a href="#results">Results</a>
-      <a href="#start">Get Started</a>
       <a href="#models">Models</a>
     </nav>
     <div class="header-actions">
@@ -131,6 +133,100 @@
     <p class="chip-note">Model latency is <code>Model.benchmark</code> for one 256×256 pair in bf16. Changes found and time per pair are the whole app on the board over the 28-pair test set.</p>
   </div>
 </section>
+
+<!-- ======================= Get started ======================= -->
+<section class="section" id="start" aria-labelledby="start-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Install</p>
+      <h2 id="start-title">Three Commands on the Board</h2>
+      <p class="lead">Run these on a Modalix DevKit with the Neat SDK and its <code>pyneat</code> environment. The first install needs internet access.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="n">01</div>
+        <div>
+          <h3>Install</h3>
+          <p>Fetches the Studio into <code>./neat-change-studio</code>. Run it in <code>/media/nvme</code>, which has room for the models.</p>
+          <div class="code">
+            <div class="code-head"><span class="where"><i></i>Board</span><button type="button" class="copy-btn" data-copy="cd /media/nvme &amp;&amp; curl -fsSL https://raw.githubusercontent.com/dotimothy/neat-change-studio/main/install.sh | bash"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Install Command</span></button></div>
+<pre><code><span class="p">$ </span>cd /media/nvme &amp;&amp; curl -fsSL https://raw.githubusercontent.com/dotimothy/neat-change-studio/main/install.sh | bash</code></pre>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">02</div>
+        <div>
+          <h3>Set Up</h3>
+          <p>Installs any missing Python packages into the <code>pyneat</code> environment, downloads a model from Hugging Face (bf16 unless you pick another) into the shared models directory, <code>/media/nvme/models/cyws</code>, makes the HTTPS certificate, and offers to add the <code>neat-change</code> command and, on a board with a desktop, a desktop icon. <code>CYWS_MODELS=all</code> fetches bf16 and w8a16 without asking.</p>
+          <div class="code">
+            <div class="code-head"><span class="where"><i></i>Board</span><button type="button" class="copy-btn" data-copy="cd neat-change-studio &amp;&amp; ./setup.sh"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Set Up Command</span></button></div>
+<pre><code><span class="p">$ </span>cd neat-change-studio &amp;&amp; ./setup.sh</code></pre>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">03</div>
+        <div>
+          <h3>Run</h3>
+          <p>Starts the web demo and prints the address to open. Open a new shell first (or run <code>source ~/.bashrc</code>): the alias is not yet defined in the shell that ran setup. Without the <code>neat-change</code> alias, run <code>webapp/run.sh</code> instead.</p>
+          <div class="code">
+            <div class="code-head"><span class="where"><i></i>Board</span><button type="button" class="copy-btn" data-copy="neat-change"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Run Command</span></button></div>
+<pre><code><span class="p">$ </span>neat-change                <span class="c"># web demo on https://&lt;board-ip&gt;:8098 (and http://)</span>
+<span class="p">$ </span>neat-change --daemon       <span class="c"># or in the background; --stop stops it</span>
+<span class="p">$ </span>./run.sh --mode static --before b.jpg --after a.jpg   <span class="c"># or the CLI on one pair</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="start-grid start-more">
+      <div class="card">
+        <h3 class="card-title">What You Need</h3>
+        <div class="req-group">
+          <h4>To Run It</h4>
+          <ul class="ticks">
+            <li>A Modalix DevKit with the Neat SDK 0.5.0 (platform 2.1.3) and its <code>pyneat</code> venv, in <code>~/pyneat</code> or set by <code>PYNEAT_VENV</code>.</li>
+            <li>Internet access on the board for the first install and the model download.</li>
+            <li>numpy, OpenCV 4.4 or later (for SIFT), Pillow and Flask. <code>./setup.sh</code> installs what is missing; <code>./setup.sh --check-only</code> only checks.</li>
+          </ul>
+        </div>
+        <div class="req-group">
+          <h4>To Build the Model (Optional)</h4>
+          <ul class="ticks">
+            <li>uv, Python 3 and PyTorch on the host.</li>
+            <li>The SiMa Neat SDK container with the Model Compiler.</li>
+            <li><code>./run_all.sh</code> reproduces everything on the host: venv, dataset, upstream code and checkpoint, reference check, ONNX export, probe compiles, calibration, the bf16/w8a16 compile and the FP32 reference, then the board evaluation. The board steps need <code>BOARD=sima@&lt;devkit-ip&gt;</code> and passwordless ssh; <code>SKIP_BOARD=1</code> skips them.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div>
+          <h3 class="sub-title">Update</h3>
+          <p class="small">Fetches the latest source over the install, keeps your models, data, outputs and certificate, then runs <code>./setup.sh</code> again.</p>
+          <div class="code">
+            <div class="code-head"><span class="where"><i></i>Board</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Update Command</span></button></div>
+<pre><code><span class="p">$ </span>neat-change update</code></pre>
+          </div>
+        </div>
+        <div>
+          <h3 class="sub-title">From a Host Instead</h3>
+          <p class="small">From a clone of the repository, <code>deploy.sh</code> copies the app to the board over ssh and rsync and runs <code>setup.sh</code> there.</p>
+          <div class="code">
+            <div class="code-head"><span class="where"><i></i>Host</span><button type="button" class="copy-btn" data-copy="BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Deploy Command</span></button></div>
+<pre><code><span class="p">$ </span>BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh
+<span class="p">$ </span>BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh --with-data   <span class="c"># also copy data/testCYWS</span></code></pre>
+          </div>
+        </div>
+        <p class="small">testCYWS is the author's private set and is not published, so bring your own pairs in this layout: <code>images/&lt;id&gt;_ref.jpg</code> (before), <code>images/&lt;id&gt;_cap.jpg</code> (after) and, for metrics, <code>masks/&lt;id&gt;.jpg</code>. The default folder is <code>data/testCYWS</code>; set <code>CYWS_DATA</code> to use another one, and run the whole set with <code>./run.sh --mode dataset</code>.</p>
+        <p class="small">Only one app may use the MLA at a time, so stop other demos first. The web demo can also download models itself: Settings → Model, then Download. Every download is checked against its SHA-256.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 
 <!-- ======================= How it works ======================= -->
 <section class="section" id="how" aria-labelledby="how-title">
@@ -509,78 +605,13 @@
   </div>
 </section>
 
-<!-- ======================= Get started ======================= -->
-<section class="section" id="start" aria-labelledby="start-title">
-  <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow">Get Started</p>
-      <h2 id="start-title">From a Fresh DevKit to Detections</h2>
-      <p class="lead">Download the compiled model from Hugging Face; building it from scratch is optional.</p>
-    </div>
-
-    <div class="start-grid">
-      <div class="card">
-        <h3 class="card-title">What You Need</h3>
-        <div class="req-group">
-          <h4>To Run It</h4>
-          <ul class="ticks">
-            <li>A Modalix DevKit with the NEAT SDK 0.5.0 (platform 2.1.3) and its <code>pyneat</code> venv, in <code>~/pyneat</code> or set by <code>PYNEAT_VENV</code>.</li>
-            <li>ssh from the host to the board; passwordless is easiest. <code>deploy.sh</code> uses ssh and rsync.</li>
-            <li>On the board: numpy, OpenCV 4.4 or later (for SIFT), Pillow and Flask. <code>./setup.sh</code> checks them and <code>./setup.sh --install</code> installs what is missing.</li>
-          </ul>
-        </div>
-        <div class="req-group">
-          <h4>To Build the Model (Optional)</h4>
-          <ul class="ticks">
-            <li>uv, Python 3 and PyTorch on the host.</li>
-            <li>The SiMa NEAT SDK container with the Model Compiler.</li>
-            <li><code>./run_all.sh</code> reproduces everything on the host: venv, dataset, upstream code and checkpoint, reference check, ONNX export, probe compiles, calibration, the bf16/w8a16 compile and the FP32 reference, then the board evaluation. The board steps need <code>BOARD=sima@&lt;devkit-ip&gt;</code> and passwordless ssh; <code>SKIP_BOARD=1</code> skips them.</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="stack">
-        <div class="code">
-          <div class="code-head"><span class="where"><i></i>1 · Copy to the Board · Host</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Step 1 Commands</span></button></div>
-<pre><code>BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh
-<span class="c"># or also copy a model you compiled yourself:</span>
-BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh build/bf16/cyws_bf16_mpk.tar.gz
-<span class="c"># also copy your own test pairs from data/testCYWS:</span>
-BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh --with-data</code></pre>
-        </div>
-        <div class="code">
-          <div class="code-head"><span class="where"><i></i>2 · Get the Model · Board</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Step 2 Commands</span></button></div>
-<pre><code>cd /media/nvme/cyws
-webapp/run.sh --fetch bf16       <span class="c"># or w8a16, or all</span>
-webapp/run.sh --list-hub         <span class="c"># what Hugging Face has, and what is here</span>
-./setup.sh --fetch               <span class="c"># check the board, then fetch bf16</span></code></pre>
-        </div>
-        <div class="code">
-          <div class="code-head"><span class="where"><i></i>3 · Detect · Board</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Step 3 Commands</span></button></div>
-<pre><code><span class="c"># one pair</span>
-./run.sh --mode static --before before.jpg --after after.jpg --out out/one
-<span class="c"># a whole dataset of your own pairs, with metrics against the GT masks</span>
-./run.sh --mode dataset --dataset-dir data/testCYWS --out out/testcyws</code></pre>
-        </div>
-        <div class="code">
-          <div class="code-head"><span class="where"><i></i>4 · Web Demo · Board</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Step 4 Commands</span></button></div>
-<pre><code>/media/nvme/cyws/webapp/run.sh --daemon   <span class="c"># http://&lt;board-ip&gt;:8098/</span>
-/media/nvme/cyws/webapp/run.sh --stop</code></pre>
-        </div>
-        <p class="small">testCYWS is the author's private set and is not published, so bring your own pairs in this layout: <code>images/&lt;id&gt;_ref.jpg</code> (before), <code>images/&lt;id&gt;_cap.jpg</code> (after) and, for metrics, <code>masks/&lt;id&gt;.jpg</code>. The default folder is <code>data/testCYWS</code>; set <code>CYWS_DATA</code> to use another one.</p>
-        <p class="small">Only one app may use the MLA at a time, so stop other demos first; <code>deploy.sh</code> refuses while another MLA app runs unless <code>FORCE=1</code>. The web demo can also download models itself: Settings → Model, then Download. Every download is checked against its SHA-256.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- ======================= Models ======================= -->
 <section class="section" id="models" aria-labelledby="models-title">
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow">Models</p>
       <h2 id="models-title">Two Compiled Builds on Hugging Face</h2>
-      <p class="lead">Both are single-ELF MPKs for the Modalix MLA, in <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a> and the collection <a href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b">SiMa.ai Change Detection Models</a>.</p>
+      <p class="lead">Both are single-ELF MPKs for the Modalix MLA, in <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a> and the collection <a href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b">SiMa.ai Change Detection Models</a>. Download them from the web demo's <strong>Settings → Model</strong>, with <code>./setup.sh</code>, or with <code>neat-change --fetch bf16</code>. They go to one models directory, <code>/media/nvme/models/cyws</code>, shared by every install and kept across updates; <code>./setup.sh --models-dir DIR</code> moves it.</p>
     </div>
 
     <div class="grid grid-2">
@@ -591,7 +622,7 @@ webapp/run.sh --list-hub         <span class="c"># what Hugging Face has, and wh
           <div><dt>Latency</dt><dd>35.2 <small>ms / pair</small></dd></div>
           <div><dt>Box Agreement</dt><dd>1.000</dd></div>
           <div><dt>testCYWS Found</dt><dd>33/47 <small>F1 0.587</small></dd></div>
-          <div><dt>Size</dt><dd>114 <small>MB</small></dd></div>
+          <div><dt>Size</dt><dd>119 <small>MB</small></dd></div>
         </dl>
         <div class="mc-foot">
           <a class="btn sm" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Get bf16</a>
@@ -605,7 +636,7 @@ webapp/run.sh --list-hub         <span class="c"># what Hugging Face has, and wh
           <div><dt>Latency</dt><dd>27.2 <small>ms / pair</small></dd></div>
           <div><dt>Box Agreement</dt><dd>0.966</dd></div>
           <div><dt>testCYWS Found</dt><dd>31/47 <small>F1 0.581</small></dd></div>
-          <div><dt>Size</dt><dd>68 <small>MB</small></dd></div>
+          <div><dt>Size</dt><dd>72 <small>MB</small></dd></div>
         </dl>
         <div class="mc-foot">
           <a class="btn sm" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Get w8a16</a>
@@ -616,29 +647,32 @@ webapp/run.sh --list-hub         <span class="c"># what Hugging Face has, and wh
   </div>
 </section>
 
-</main>
-
-<!-- ======================= Footer ======================= -->
-<footer class="site-footer">
+<!-- ======================= License ======================= -->
+<section class="section" id="license" aria-labelledby="license-title">
   <div class="wrap">
-    <div class="foot-grid">
-      <div>
-        <h2 class="card-title">License and Credits</h2>
+    <div class="section-head">
+      <p class="eyebrow">License</p>
+      <h2 id="license-title">License and Citation</h2>
+    </div>
+    <div class="license-grid">
+      <div class="card">
+        <h3 class="card-title">License and Credits</h3>
         <ul>
           <li>The code is under the Apache License 2.0 (<a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/LICENSE">LICENSE</a>, <a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/NOTICE">NOTICE</a>).</li>
           <li>CYWS is by Ragav Sachdeva and Andrew Zisserman (<a href="https://github.com/ragavsachdeva/The-Change-You-Want-to-See">The Change You Want to See</a>, WACV 2023). Its authors have confirmed that CYWS, its code and pretrained weights, is released under the Apache License 2.0; see NOTICE. The compiled models are derived from those weights and are also Apache-2.0.</li>
           <li>Inter and JetBrains Mono are under the SIL Open Font License 1.1 (<a href="assets/fonts/OFL-Inter.txt">Inter</a>, <a href="assets/fonts/OFL-JetBrainsMono.txt">JetBrains Mono</a>).</li>
           <li>SiMa.ai, Modalix, Neat and the SiMa.ai and Neat logos are trademarks of SiMa.ai and are not covered by the Apache License.</li>
         </ul>
-        <div class="foot-links" style="margin-top:16px">
+        <div class="foot-links">
           <a class="btn sm" href="https://github.com/dotimothy/neat-change-studio"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Neat Change Studio</a>
           <a class="btn sm" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-cube"/></svg>Models</a>
           <a class="btn sm" href="https://github.com/dotimothy/neat-decision-studio"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Neat Decision Studio</a>
           <a class="btn sm" href="https://github.com/ragavsachdeva/The-Change-You-Want-to-See"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Upstream CYWS</a>
         </div>
       </div>
-      <div>
-        <h2 class="card-title">Citation</h2>
+      <div class="card">
+        <h3 class="card-title">Citation</h3>
+        <p class="small">If you use CYWS, please cite the paper.</p>
         <div class="code">
           <div class="code-head"><span class="where"><i></i>BibTeX</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> BibTeX</span></button></div>
 <pre class="wrap-pre"><code>@inproceedings{sachdeva2023change,
@@ -650,10 +684,21 @@ webapp/run.sh --list-hub         <span class="c"># what Hugging Face has, and wh
         </div>
       </div>
     </div>
-    <div class="foot-base">
-      <span class="fb-brand"><img class="brand-mark" src="assets/neat-mark.png" alt="" width="36" height="24" loading="lazy"><span>Neat Change Studio · Powered by <strong>Neat</strong> on the <strong>Modalix MLA</strong></span></span>
-      <a href="#top">Back to Top</a>
+  </div>
+</section>
+
+</main>
+
+<!-- ======================= Footer ======================= -->
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/dotimothy/neat-change-studio">GitHub</a>
+      <a href="https://github.com/dotimothy/neat-change-studio#readme">Documentation</a>
+      <a href="https://github.com/dotimothy/neat-change-studio/issues">Issues</a>
+      <a href="https://huggingface.co/dotimothy">Hugging Face</a>
     </div>
+    <small>Neat Change Studio · Apache-2.0 · for SiMa.ai Modalix</small>
   </div>
 </footer>
 
