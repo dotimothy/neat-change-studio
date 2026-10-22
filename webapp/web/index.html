@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Before/after change detection with CYWS, running on the SiMa Modalix MLA.">
+<meta name="theme-color" content="#0c0f14" id="meta-theme">
+<title>Neat Change Studio</title>
+<link rel="icon" type="image/png" href="/static/assets/neat-mark.png">
+<link rel="preload" href="/static/assets/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/assets/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+  // Apply a saved theme before first paint (default: follow the OS).
+  try { var t = localStorage.getItem("cyws-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) { /* storage blocked */ }
+</script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="spectrum-accents" data-tab="detect">
+
+<!-- Icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="g-spectrum" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16c8a6"/><stop offset=".35" stop-color="#4bb54a"/><stop offset=".55" stop-color="#a9c81c"/><stop offset=".78" stop-color="#3a86ec"/><stop offset="1" stop-color="#f2801d"/>
+    </linearGradient>
+  </defs>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.4-2h6.2l1.4 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.8" r="3.4"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 4.5-4.5 3.5 3.5 2.5-2.5L20 19"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10v9h11v-9"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M4 12h16"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V10M10 20V5M15 20v-7M20 20v-4"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M5 6h9M18 6h1M5 12h3M12 12h7M5 18h11M20 18h-1"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><rect x="8.5" y="8.5" width="7" height="7" rx="1.2"/></symbol>
+  <symbol id="i-overlay" viewBox="0 0 24 24"><rect x="3.5" y="5" width="12" height="10" rx="2"/><rect x="8.5" y="9" width="12" height="10" rx="2"/></symbol>
+  <symbol id="i-side" viewBox="0 0 24 24"><rect x="3" y="5" width="8" height="14" rx="1.8"/><rect x="13" y="5" width="8" height="14" rx="1.8"/></symbol>
+  <symbol id="i-swipe" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M12 3v18"/><path d="m8 10-2 2 2 2M16 10l2 2-2 2"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-zoom-reset" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4M8 11h6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7"/></symbol>
+  <symbol id="i-webcam" viewBox="0 0 24 24"><circle cx="12" cy="10" r="6.5"/><circle cx="12" cy="10" r="2.6"/><path d="M8 20h8M12 16.5V20"/></symbol>
+  <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.4 5.4a9.3 9.3 0 0 0 0 13.2M18.6 5.4a9.3 9.3 0 0 1 0 13.2"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7"/><path d="M12 10v3.5l2.3 2M9.5 3.5h5M12 3.5v3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M17 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 4 18.5v-10A1.5 1.5 0 0 1 5.5 7H10"/></symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24"><path d="M4 9a8 8 0 0 1 14.5-3M20 4v4h-4M20 15a8 8 0 0 1-14.5 3M4 20v-4h4"/></symbol>
+  <symbol id="i-ghost" viewBox="0 0 24 24"><rect x="3.5" y="5" width="12" height="10" rx="2" stroke-dasharray="2.4 2"/><rect x="8.5" y="9" width="12" height="10" rx="2"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/></symbol>
+</svg>
+
+<div class="app" id="app">
+  <!-- ======================= Header ======================= -->
+  <header class="app-header">
+    <a class="brand" href="#" id="brand" aria-label="Neat Change Studio — back to start">
+      <img class="brand-mark" src="/static/assets/neat-mark.png" alt="" width="51" height="34">
+      <span class="brand-text">
+        <span class="brand-title"><span class="brand-neat">Neat </span>Change Studio</span>
+        <span class="brand-sub">Before/After Change Detection · CYWS on the Modalix MLA</span>
+      </span>
+    </a>
+    <div class="header-actions">
+      <button type="button" class="status-pill" id="status-pill" title="Model status" aria-label="Model status: connecting">
+        <span class="dot" id="status-dot"></span><span class="status-text" id="status-text">Connecting…</span>
+      </button>
+      <button type="button" class="icon-btn hide-phone" id="btn-home" title="Back to start" aria-label="Back to start"><svg><use href="#i-home"/></svg></button>
+      <button type="button" class="icon-btn hide-phone" id="btn-link" title="Copy a link to this view" aria-label="Copy a link to this view"><svg><use href="#i-link"/></svg></button>
+      <button type="button" class="icon-btn desktop-only" id="btn-fs" title="Full screen" aria-label="Toggle full screen"><svg class="ic-enter"><use href="#i-expand"/></svg><svg class="ic-exit"><use href="#i-shrink"/></svg></button>
+      <button type="button" class="icon-btn" id="btn-settings" title="Settings" aria-label="Settings" aria-controls="rail"><svg><use href="#i-sliders"/></svg></button>
+      <button type="button" class="icon-btn" id="btn-theme" title="Toggle dark / light" aria-label="Toggle dark or light theme"><svg class="ic-moon"><use href="#i-moon"/></svg><svg class="ic-sun"><use href="#i-sun"/></svg></button>
+      <button type="button" class="icon-btn not-desktop" id="btn-menu" title="Menu" aria-label="Open menu" aria-expanded="false" aria-controls="rail"><svg class="ic-menu"><use href="#i-menu"/></svg><svg class="ic-close"><use href="#i-close"/></svg></button>
+    </div>
+  </header>
+
+  <div class="workspace" id="workspace">
+    <!-- ======================= Main column ======================= -->
+    <main class="main-col" id="main-col">
+      <div class="chipbar" id="chipbar" aria-label="Latest run">
+        <div class="metric-group">
+          <div class="metric-group-head"><svg class="mg-ic"><use href="#i-chip"/></svg>On the MLA<span class="metric-group-model" id="chip-model"></span></div>
+          <div class="metric-group-items">
+            <div class="metric-item" title="Mean MLA latency per 256×256 window"><span class="metric-value" id="m-mla">—</span><span class="metric-label">Per Window</span></div>
+            <div class="metric-item" title="Windows (global view + tiles) run on the MLA for this pair"><span class="metric-value" id="m-windows">—</span><span class="metric-label" id="m-windows-label">Windows</span></div>
+          </div>
+        </div>
+        <div class="metric-group">
+          <div class="metric-group-head">Pipeline</div>
+          <div class="metric-group-items">
+            <div class="metric-item" title="Wall-clock time for the whole pair"><span class="metric-value" id="m-total">—</span><span class="metric-label">Total</span></div>
+            <div class="metric-item mi-detail" title="Decoding the two JPEGs"><span class="metric-value" id="m-decode">—</span><span class="metric-label">Decode</span></div>
+            <div class="metric-item mi-detail" title="Aligning the before photo to the after photo"><span class="metric-value" id="m-align">—</span><span class="metric-label">Align</span></div>
+          </div>
+        </div>
+        <div class="metric-group">
+          <div class="metric-group-head">Found</div>
+          <div class="metric-group-items found-items" title="Appeared · disappeared · changed">
+            <div class="metric-item fc appeared" title="Objects that appeared"><i></i><span class="metric-value" id="m-app">—</span><span class="metric-label">Appeared</span></div>
+            <div class="metric-item fc disappeared" title="Objects that disappeared"><i></i><span class="metric-value" id="m-dis">—</span><span class="metric-label">Gone</span></div>
+            <div class="metric-item fc changed" title="Objects that changed"><i></i><span class="metric-value" id="m-chg">—</span><span class="metric-label">Changed</span></div>
+          </div>
+        </div>
+        <div class="metric-group">
+          <div class="metric-group-head">Vs Ground Truth</div>
+          <div class="metric-group-items">
+            <div class="metric-item" title="Pixel F1 of the change mask against the annotated mask"><span class="metric-value" id="m-f1">—</span><span class="metric-label">Pixel F1</span></div>
+            <div class="metric-item" title="Annotated change regions touched by a detection"><span class="metric-value" id="m-regions">—</span><span class="metric-label">Regions</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="viewer-area" id="viewer-area">
+        <!-- Empty state -->
+        <section class="hero" id="hero" aria-labelledby="hero-title">
+          <div class="hero-lockup">
+            <img class="hero-logo logo-for-dark" src="/static/assets/logo_bright.png" alt="SiMa.ai" width="196" height="46">
+            <img class="hero-logo logo-for-light" src="/static/assets/logo_dark.png" alt="SiMa.ai" width="196" height="46">
+            <h1 class="hero-title" id="hero-title">See What Changed</h1>
+          </div>
+          <p class="hero-powered">Powered by <strong>Neat</strong> · <strong>Modalix MLA</strong></p>
+          <p class="hero-sub">Give it two photos of the same scene and it marks every object that appeared, disappeared or changed. Change Detection runs entirely on the SiMa Modalix MLA.</p>
+          <button type="button" class="hero-model" id="hero-model" title="Model settings"><span class="hm-dot"></span><span id="hero-model-text">Connecting…</span></button>
+          <div class="suggest-row" id="suggest-row" aria-label="Try a test pair"></div>
+          <p class="hero-hint"><kbd>←</kbd><kbd>→</kbd> Browse the Test Set · <kbd>Enter</kbd> Detect</p>
+        </section>
+
+        <!-- Result viewer -->
+        <section class="viewer" id="viewer" hidden aria-label="Result viewer">
+          <div class="viewer-head">
+            <div class="vh-title">
+              <span class="vh-name" id="vh-name">—</span>
+              <span class="vh-meta" id="vh-meta"></span>
+            </div>
+            <div class="legend" aria-label="Legend">
+              <span><i class="sw appeared"></i>Appeared</span>
+              <span><i class="sw disappeared"></i>Disappeared</span>
+              <span><i class="sw changed"></i>Changed</span>
+              <span class="lg-gt"><i class="sw gt"></i>Truth</span>
+            </div>
+          </div>
+          <div class="viewer-stage" id="stage" data-mode="overlay">
+            <figure class="frame frame-before" id="frame-before">
+              <div class="zoom"><img id="img-before-side" alt="Before photo" decoding="async"></div>
+              <figcaption class="cap">Before</figcaption>
+            </figure>
+            <figure class="frame frame-after" id="frame-after">
+              <div class="zoom" id="zoom-after">
+                <img id="img-after" class="base" alt="After photo with detected changes" decoding="async">
+                <img id="img-before-swipe" class="swipe-img" alt="" decoding="async">
+                <img id="img-heat" class="layer" data-l="heat" alt="" decoding="async">
+                <img id="img-mask" class="layer" data-l="mask" alt="" decoding="async">
+                <img id="img-gt" class="layer" data-l="gt" alt="" decoding="async">
+                <svg id="svg" class="overlay" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div class="tags" id="tags" data-l="boxes"></div>
+              </div>
+              <div class="swipe-line" id="swipe-line"><button type="button" class="swipe-knob" id="swipe-knob" role="slider" aria-label="Before/after split" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><svg><use href="#i-swipe"/></svg></button></div>
+              <div class="scan" aria-hidden="true"><div class="scan-sweep"></div></div>
+              <figcaption class="cap cap-after">After</figcaption>
+              <span class="cap cap-before-swipe">Before</span>
+            </figure>
+            <div class="run-status" id="run-status" role="status" aria-live="polite"></div>
+          </div>
+          <div class="toolbar" id="toolbar" role="toolbar" aria-label="Viewer">
+            <div class="tb-scroll" id="tb-scroll">
+              <div class="seg" id="mode" role="radiogroup" aria-label="View mode">
+                <button type="button" data-m="overlay" role="radio" aria-checked="true" title="Overlay" aria-label="Overlay"><svg><use href="#i-overlay"/></svg><span>Overlay</span></button>
+                <button type="button" data-m="side" role="radio" aria-checked="false" title="Side by Side" aria-label="Side by side"><svg><use href="#i-side"/></svg><span>Side by Side</span></button>
+                <button type="button" data-m="swipe" role="radio" aria-checked="false" title="Swipe" aria-label="Swipe"><svg><use href="#i-swipe"/></svg><span>Swipe</span></button>
+              </div>
+              <span class="tb-sep"></span>
+              <div class="layer-chips" id="layers" aria-label="Layers">
+                <button type="button" class="lchip" data-l="boxes" aria-pressed="true"><i class="ld boxes"></i><span>Boxes</span></button>
+                <button type="button" class="lchip" data-l="heat" aria-pressed="true"><i class="ld heat"></i><span>Heat</span></button>
+                <button type="button" class="lchip" data-l="mask" aria-pressed="false"><i class="ld mask"></i><span>Mask</span></button>
+                <button type="button" class="lchip" data-l="gt" aria-pressed="false"><i class="ld gt"></i><span>Truth</span></button>
+                <button type="button" class="lchip" data-l="tiles" aria-pressed="false"><i class="ld tiles"></i><span>Tiles</span></button>
+              </div>
+            </div>
+            <!-- kept out of the scrolling strip; on phones it floats on the image instead -->
+            <div class="tb-end" id="tb-end">
+              <button type="button" class="tb-btn" id="btn-zoom-reset" hidden title="Reset zoom" aria-label="Reset zoom"><svg><use href="#i-zoom-reset"/></svg></button>
+              <button type="button" class="tb-btn" id="btn-vfs" title="Full screen viewer" aria-label="Full screen viewer"><svg class="ic-enter"><use href="#i-expand"/></svg><svg class="ic-exit"><use href="#i-shrink"/></svg></button>
+            </div>
+          </div>
+          <button type="button" class="fs-close" id="btn-fs-close" title="Exit full screen" aria-label="Exit full screen"><svg><use href="#i-close"/></svg></button>
+        </section>
+
+        <!-- Phone: quick summary under the viewer -->
+        <div class="m-summary" id="m-summary" hidden>
+          <div class="ms-row">
+            <div class="ms-counts" id="ms-counts"></div>
+            <button type="button" class="ms-more" id="ms-more">Details<svg><use href="#i-chev"/></svg></button>
+          </div>
+          <ul class="dets ms-dets" id="ms-dets"></ul>
+        </div>
+      </div>
+
+      <!-- Composer -->
+      <form class="composer" id="composer" autocomplete="off" onsubmit="return false">
+        <div class="slots">
+          <div class="slot" data-role="before" tabindex="0" role="button" aria-label="Before photo: choose or drop a file">
+            <span class="slot-thumb"><img alt="" hidden><svg class="slot-ph"><use href="#i-image"/></svg></span>
+            <span class="slot-text"><span class="slot-label">Before</span><span class="slot-sub">Drop or Pick</span></span>
+            <button type="button" class="slot-clear" aria-label="Clear before photo" hidden><svg><use href="#i-close"/></svg></button>
+          </div>
+          <svg class="slot-arrow" aria-hidden="true"><use href="#i-arrow"/></svg>
+          <div class="slot" data-role="after" tabindex="0" role="button" aria-label="After photo: choose or drop a file">
+            <span class="slot-thumb"><img alt="" hidden><svg class="slot-ph"><use href="#i-image"/></svg></span>
+            <span class="slot-text"><span class="slot-label">After</span><span class="slot-sub">Drop or Pick</span></span>
+            <button type="button" class="slot-clear" aria-label="Clear after photo" hidden><svg><use href="#i-close"/></svg></button>
+          </div>
+        </div>
+        <div class="composer-info" id="composer-info">Pick a test pair, or add a before and an after photo.</div>
+        <div class="composer-tools">
+          <button type="button" class="input-button" id="btn-gallery" title="Choose photos" aria-label="Choose photos from your library"><svg><use href="#i-image"/></svg></button>
+          <button type="button" class="input-button" id="btn-camera" title="Take Photos" aria-label="Take photos with the camera"><svg><use href="#i-camera"/></svg></button>
+          <button type="button" class="input-button" id="btn-webcam" title="Webcam" aria-label="Capture the photos with the webcam"><svg><use href="#i-webcam"/></svg></button>
+        </div>
+        <button type="submit" class="detect-btn" id="detect-btn" disabled aria-label="Detect changes">
+          <span class="db-ic"><svg><use href="#i-scan"/></svg></span><span class="db-spin" aria-hidden="true"></span><span class="db-text">Detect</span>
+        </button>
+      </form>
+    </main>
+
+    <div class="scrim" id="scrim" hidden></div>
+    <button type="button" class="rail-toggle desktop-only" id="rail-toggle" title="Hide Panel" aria-label="Hide the side panel" aria-controls="rail" aria-expanded="true"><svg><use href="#i-chev"/></svg></button>
+
+    <!-- ======================= Rail ======================= -->
+    <aside class="rail" id="rail" aria-label="Test set, settings and results">
+      <section class="card" data-card="gallery" data-tab="gallery">
+        <div class="card-head">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-title">Test Set</span><span class="card-meta" id="gal-count"></span><svg class="chev"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="card-body">
+          <div class="pills" id="filters" role="radiogroup" aria-label="Filter test pairs">
+            <button type="button" class="pill on" data-f="all" role="radio" aria-checked="true">All <span class="n" id="f-all"></span></button>
+            <button type="button" class="pill" data-f="change" role="radio" aria-checked="false">Change <span class="n" id="f-change"></span></button>
+            <button type="button" class="pill" data-f="none" role="radio" aria-checked="false">No Change <span class="n" id="f-none"></span></button>
+          </div>
+          <div class="pairs" id="pairs" role="listbox" aria-label="Test pairs"></div>
+        </div>
+      </section>
+
+      <section class="card collapsed" data-card="upload" data-tab="none">
+        <div class="card-head">
+          <button type="button" class="card-toggle" aria-expanded="false"><span class="card-title">Your Photos</span><span class="card-meta">Two Shots, Same Scene</span><svg class="chev"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="card-body">
+          <div class="drops">
+            <div class="drop" data-role="before" tabindex="0" role="button" aria-label="Choose or drop the before photo"><img alt="" hidden><span class="drop-ph"><svg><use href="#i-image"/></svg>Before</span></div>
+            <div class="drop" data-role="after" tabindex="0" role="button" aria-label="Choose or drop the after photo"><img alt="" hidden><span class="drop-ph"><svg><use href="#i-image"/></svg>After</span></div>
+          </div>
+          <p class="hint">Hold the camera at the same spot for both shots. Turn on <b>Align Photos</b> if the viewpoint moved.</p>
+          <button type="button" class="btn block" id="up-webcam"><svg><use href="#i-webcam"/></svg><span>Use the Webcam</span></button>
+          <button type="button" class="btn primary block" id="up-go" disabled>Detect Changes</button>
+        </div>
+      </section>
+
+      <section class="card" data-card="settings" data-tab="settings">
+        <div class="card-head">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-title">Settings</span><span class="card-meta" id="set-meta"></span><svg class="chev"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="card-body">
+          <div class="setting" id="preset-wrap" hidden>
+            <div class="setting-label">Preset</div>
+            <div class="pills" id="ctl-preset"></div>
+          </div>
+          <div class="setting">
+            <div class="setting-label">Windows</div>
+            <div class="segctl" id="ctl-levels" role="radiogroup" aria-label="Windows">
+              <button type="button" data-v="0" role="radio"><b>Global</b><small>1 View</small></button>
+              <button type="button" data-v="0,1" role="radio"><b>Tiled</b><small>+ Tiles</small></button>
+              <button type="button" data-v="0,1,2" role="radio"><b>Fine</b><small>2 Tile Scales</small></button>
+            </div>
+          </div>
+          <div class="setting">
+            <label class="setting-label" for="ctl-thr">Threshold <output id="thr-v" class="mono-val">0.30</output></label>
+            <input type="range" id="ctl-thr" class="range" min="0.05" max="0.9" step="0.05" value="0.3">
+            <div class="range-ends"><span>More Boxes</span><span>Fewer, Surer</span></div>
+          </div>
+          <div class="toggles">
+            <label class="switch-row"><input type="checkbox" role="switch" id="ctl-register"><span class="sw-text"><b>Align Photos</b><small>SIFT + homography; also enables the false-positive check</small></span></label>
+            <label class="switch-row"><input type="checkbox" role="switch" id="ctl-gated"><span class="sw-text"><b>Gated Tiles</b><small>Run tiles only where a change is likely</small></span></label>
+            <label class="switch-row"><input type="checkbox" role="switch" id="ctl-diff"><span class="sw-text"><b>Pixel Masks</b><small>Mask from the pixel difference in each box (needs Align Photos)</small></span></label>
+          </div>
+          <div class="setting">
+            <div class="setting-label">Model</div>
+            <div class="models" id="models" role="radiogroup" aria-label="Model"></div>
+            <p class="models-src" id="models-src"></p>
+            <p class="err-line" id="model-err" hidden></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-card="dets" data-tab="results">
+        <div class="card-head">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-title">Detections</span><span class="card-meta" id="det-count"></span><svg class="chev"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="card-body">
+          <div class="counts" id="counts"></div>
+          <ul class="dets" id="dets"><li class="empty-row">No results yet. Pick a test pair or add two photos.</li></ul>
+          <button type="button" class="dets-more" id="dets-more" aria-expanded="false" aria-controls="dets" hidden><span></span><svg><use href="#i-chev"/></svg></button>
+        </div>
+      </section>
+
+      <section class="card" data-card="acc" data-tab="results">
+        <div class="card-head">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-title">Vs Ground Truth</span><span class="card-meta" id="acc-meta"></span><svg class="chev"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="card-body">
+          <div class="tiles-grid" id="metrics"><p class="empty-row">Accuracy appears here for test pairs with an annotated mask.</p></div>
+        </div>
+      </section>
+
+      <section class="card" data-card="timing" data-tab="results">
+        <div class="card-head">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-title">Timing</span><span class="card-meta" id="t-total"></span><svg class="chev"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="card-body">
+          <div class="tbar" id="tbar"></div>
+          <ul class="tlist" id="tlist"><li class="empty-row">—</li></ul>
+          <p class="note" id="t-note"></p>
+        </div>
+      </section>
+
+      <section class="card" data-card="all" data-tab="results">
+        <div class="card-head">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-title">Whole Test Set</span><span class="card-meta" id="all-meta"></span><svg class="chev"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="card-body">
+          <p class="hint">Run every test pair with the current settings and score it against the ground truth.</p>
+          <button type="button" class="btn spectrum block" id="run-all"><svg><use href="#i-play"/></svg><span>Run All Pairs</span></button>
+          <div class="progress" id="all-progress" hidden><div class="progress-fill" id="all-prog"></div></div>
+          <div class="tiles-grid sum" id="all-sum" hidden></div>
+          <div class="table-wrap" id="all-wrap" hidden>
+            <table class="all">
+              <thead><tr><th>Pair</th><th title="Ground truth has a change">GT</th><th title="Boxes found">Boxes</th><th>F1</th><th title="Regions found"><span class="th-long">Regions</span><span class="th-short">Reg.</span></th><th>ms</th></tr></thead>
+              <tbody id="all-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer class="rail-foot" data-tab="settings">
+        <span>CYWS (Sachdeva &amp; Zisserman, WACV&nbsp;2023; Apache&#8209;2.0)</span>
+        <span>Powered by <strong>Neat</strong> · © 2026 SiMa.ai, Inc.</span>
+      </footer>
+    </aside>
+  </div>
+
+  <!-- ======================= Phone tab bar ======================= -->
+  <nav class="tabbar" id="tabbar" role="tablist" aria-label="Sections">
+    <button type="button" role="tab" data-tab="detect" aria-selected="true"><svg><use href="#i-target"/></svg><span>Detect</span></button>
+    <button type="button" role="tab" data-tab="gallery" aria-selected="false"><svg><use href="#i-grid"/></svg><span>Test Set</span></button>
+    <button type="button" role="tab" data-tab="results" aria-selected="false"><svg><use href="#i-chart"/></svg><span>Results</span><b class="tab-badge" id="tab-badge" hidden></b></button>
+    <button type="button" role="tab" data-tab="settings" aria-selected="false"><svg><use href="#i-sliders"/></svg><span>Settings</span></button>
+  </nav>
+</div>
+
+<!-- Bottom sheet (phone menus) -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-scrim" data-close></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-grab" aria-hidden="true"></div>
+    <div class="sheet-title" id="sheet-title"></div>
+    <div class="sheet-body" id="sheet-body"></div>
+    <button type="button" class="sheet-cancel" data-close>Cancel</button>
+  </div>
+</div>
+
+<!-- Webcam: capture Before, then After (or watch live). In live mode the panel shrinks to a floating preview. -->
+<div class="cam" id="cam" hidden>
+  <div class="cam-scrim" data-cam-close></div>
+  <div class="cam-panel" role="dialog" aria-modal="true" aria-labelledby="cam-title">
+    <div class="cam-head">
+      <div class="cam-title" id="cam-title"><svg><use href="#i-webcam"/></svg><span>Webcam</span></div>
+      <div class="cam-live-badge" id="cam-live-badge"><span class="live-dot"></span>Live<span class="cam-fps" id="cam-fps"></span></div>
+      <div class="cam-head-actions">
+        <button type="button" class="icon-btn" id="cam-flip" title="Switch Camera" aria-label="Switch camera" hidden><svg><use href="#i-flip"/></svg></button>
+        <button type="button" class="icon-btn" id="cam-close" title="Close" aria-label="Close the webcam"><svg><use href="#i-close"/></svg></button>
+      </div>
+    </div>
+    <div class="cam-stage" id="cam-stage">
+      <video id="cam-video" playsinline muted autoplay></video>
+      <img class="cam-ghost" id="cam-ghost" alt="" hidden>
+      <div class="cam-guide" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="cam-flash" id="cam-flash"></div>
+      <div class="cam-count" id="cam-count" hidden aria-live="assertive">
+        <div class="cc-dial">
+          <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="cc-track" cx="60" cy="60" r="54"/><circle class="cc-ring" id="cam-count-ring" cx="60" cy="60" r="54"/></svg>
+          <span class="cc-n" id="cam-count-n"></span>
+        </div>
+        <span class="cc-hint" id="cam-count-hint"></span>
+      </div>
+      <div class="cam-step" id="cam-step" aria-live="polite"></div>
+      <div class="cam-msg" id="cam-msg" hidden></div>
+      <button type="button" class="cam-stop" id="cam-stop" title="Stop Live" aria-label="Stop live detection"><svg><use href="#i-stop"/></svg></button>
+    </div>
+    <div class="cam-foot">
+      <button type="button" class="cam-shot" data-role="before" title="Retake Before"><img alt="" hidden><span>Before</span></button>
+      <button type="button" class="cam-shutter" id="cam-shutter" aria-label="Capture the before photo"><span></span></button>
+      <button type="button" class="cam-shot" data-role="after" title="Retake After"><img alt="" hidden><span>After</span></button>
+    </div>
+    <div class="cam-actions">
+      <button type="button" class="btn" id="cam-timer" title="Self-Timer: Wait Before Each Capture"><svg><use href="#i-timer"/></svg><span>Timer</span><b class="cam-timer-v" id="cam-timer-v">Off</b></button>
+      <button type="button" class="btn" id="cam-ghost-btn" aria-pressed="true" title="Show the Before frame over the camera, to line up the After shot"><svg><use href="#i-ghost"/></svg><span>Ghost</span></button>
+      <button type="button" class="btn spectrum" id="cam-live" disabled title="Capture Before first"><svg><use href="#i-live"/></svg><span>Watch Live</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Model switch -->
+<div class="mswitch" id="mswitch" hidden>
+  <div class="msw-card" role="status" aria-live="polite">
+    <div class="msw-chip" aria-hidden="true">
+      <svg viewBox="0 0 160 160">
+        <g class="msw-pins">
+          <path d="M56 8v26M80 8v26M104 8v26M56 126v26M80 126v26M104 126v26M8 56h26M8 80h26M8 104h26M126 56h26M126 80h26M126 104h26"/>
+        </g>
+        <g class="msw-flow">
+          <path d="M56 8v26M80 8v26M104 8v26M56 126v26M80 126v26M104 126v26M8 56h26M8 80h26M8 104h26M126 56h26M126 80h26M126 104h26"/>
+        </g>
+        <rect class="msw-die" x="34" y="34" width="92" height="92" rx="14"/>
+        <clipPath id="msw-clip"><rect x="34" y="34" width="92" height="92" rx="14"/></clipPath>
+        <g clip-path="url(#msw-clip)"><rect class="msw-fill" x="34" y="34" width="92" height="92"/></g>
+        <rect class="msw-core" x="34" y="34" width="92" height="92" rx="14"/>
+        <path class="msw-check" d="m62 81 12 12 24-26"/>
+      </svg>
+      <div class="msw-label"><span class="msw-name msw-from" id="msw-from"></span><span class="msw-name msw-to" id="msw-to"></span></div>
+    </div>
+    <div class="msw-title" id="msw-title">Switching Model</div>
+    <ol class="msw-steps" id="msw-steps">
+      <li data-s="release"><i></i>Release the MLA</li>
+      <li data-s="load"><i></i>Load the Model</li>
+      <li data-s="warm"><i></i>Warm Up</li>
+      <li data-s="ready"><i></i>Ready</li>
+    </ol>
+    <div class="msw-bar"><div class="msw-bar-fill" id="msw-bar"></div></div>
+    <div class="msw-foot"><span id="msw-time">0.0 s</span><span id="msw-eta"></span></div>
+    <p class="msw-err" id="msw-err" hidden></p>
+    <button type="button" class="btn block" id="msw-close" hidden>Close</button>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="assertive" aria-atomic="false"></div>
+<input type="file" id="file-pick" accept="image/*" hidden>
+<input type="file" id="file-cam" accept="image/*" capture="environment" hidden>
+<script src="/static/app.js" defer></script>
+</body>
+</html>

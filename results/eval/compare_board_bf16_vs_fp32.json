@@ -1,0 +1,33 @@
+{
+ "n": 97,
+ "heat_cosine_min": 0.9943031359866088,
+ "heat_cosine_mean": 0.9985424139815718,
+ "heat_cosine_samples": 54,
+ "heat_max_abs": 0.058349609375,
+ "wh_off_rel_err_median": 0.0033223243663087487,
+ "wh_off_rel_err_p95": 0.013909653760492803,
+ "box_agreement": 1.0,
+ "ref_boxes": 148,
+ "ap50_vs_ref": 0.9284665878620679,
+ "swap": [
+  {
+   "name": "swap0:20240916_175631|20240919_152956",
+   "dist_same": 0.4398176074028015,
+   "dist_swapped": 9.536798477172852,
+   "ok": true
+  },
+  {
+   "name": "swap1:20240916_175631|20240919_170629",
+   "dist_same": 0.5172799825668335,
+   "dist_swapped": 8.96388053894043,
+   "ok": true
+  },
+  {
+   "name": "swap2:20240916_180158|20240919_171750",
+   "dist_same": 0.42080792784690857,
+   "dist_swapped": 7.003228664398193,
+   "ok": true
+  }
+ ],
+ "pass": true
+}

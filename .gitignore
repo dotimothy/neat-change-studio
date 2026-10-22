@@ -1,0 +1,38 @@
+# Build outputs, downloads and environments (made by run_all.sh and the scripts)
+/build/
+/third_party/
+/.venv/
+venv/
+/models/
+/out/
+
+# The private test photos; bring your own pairs (see README "Dataset")
+/data/testCYWS/
+data/*manifest*.tsv
+!data/testcyws_manifest.example.tsv
+
+# Model files: the compiled models are on Hugging Face (dotimothy/sima-cyws)
+*.onnx
+*_mpk.tar.gz
+*.ckpt*
+
+# Made at run time by the web demo (the key must never be committed)
+webapp/certs/
+webapp/uploads/
+webapp/cache/
+webapp/server.log
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local and editor files
+.env
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~

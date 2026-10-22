@@ -1,0 +1,16 @@
+# Host tools: model rewrite and ONNX export (model/), evaluation (eval/), dataset download
+# (data/), Hugging Face publishing (tools/) and the tests.
+# Not here: pyneat (NEAT SDK, board only) and afe / sima_utils (the Model Compiler, inside
+# the NEAT SDK container used by compile/compile.sh).
+# torch and torchvision: install the build that matches your GPU/CUDA first (see pytorch.org).
+-r requirements.txt
+torch>=2.1
+torchvision>=0.16             # the upstream reference in model/verify_reference.py
+onnx>=1.16
+onnxruntime>=1.18
+onnxsim>=0.4.36
+huggingface_hub>=0.23         # tools/publish_hub.py only
+gdown>=5.0                    # data/download_testcyws.sh
+scipy>=1.10
+einops>=0.6                   # upstream co-attention module
+pytest>=7.0

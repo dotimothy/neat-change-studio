@@ -1,0 +1,9 @@
+# Manifest for data/download_testcyws.sh: one file per line, tab-separated.
+# Column 1 is the path inside the dataset folder, column 2 the Google Drive file ID
+# (the part after /d/ or ?id= in a "share" link; the file must be viewable by link).
+# Layout: images/<id>_ref.jpg (before), images/<id>_cap.jpg (after), optional masks/<id>.jpg.
+# Lines starting with # are ignored.
+# relative_path	drive_file_id
+images/pair001_ref.jpg	<drive-file-id>
+images/pair001_cap.jpg	<drive-file-id>
+masks/pair001.jpg	<drive-file-id>

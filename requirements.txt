@@ -1,0 +1,7 @@
+# Runtime for the app (app/) and the web demo (webapp/), on the board or on a host.
+# On the DevKit, install into the pyneat venv (./setup.sh --install does this for the
+# missing packages). pyneat itself comes with the NEAT SDK and is not on PyPI.
+numpy>=1.24
+opencv-python-headless>=4.4   # 4.4+ includes SIFT (used by --register)
+pillow>=9.0
+flask>=2.2                    # web demo only

@@ -1,0 +1,44 @@
+Neat Change Studio
+https://github.com/dotimothy/neat-change-studio
+
+The code in this repository is licensed under the Apache License 2.0
+(see LICENSE), except where noted below.
+
+-------------------------------------------------------------------------------
+CYWS (The Change You Want to See)
+
+CYWS is by Ragav Sachdeva and Andrew Zisserman (The Change You Want to See,
+WACV 2023, https://github.com/ragavsachdeva/The-Change-You-Want-to-See).
+The authors have confirmed to the maintainer (2026) that CYWS, its code and
+pretrained weights, is released under the Apache License 2.0. This supersedes
+the CC BY-NC default mentioned in upstream issue #11 (2024). The upstream
+repository does not include a LICENSE file yet.
+
+model/cyws_mla.py is an independent reimplementation of the CYWS architecture.
+Its module names match the upstream checkpoint so that the pretrained weights
+load unchanged. Files derived from the weights (the checkpoint with BatchNorm
+folded, the ONNX export and the compiled MPKs) are also Apache-2.0.
+
+-------------------------------------------------------------------------------
+mmdetection
+
+model/ref_centernet.py is derived from mmdetection v2.28.2
+(https://github.com/open-mmlab/mmdetection), Copyright (c) OpenMMLab,
+licensed under the Apache License 2.0. It was modified: trimmed to inference
+(forward and decode), with no mmcv/mmdet dependency.
+
+-------------------------------------------------------------------------------
+Fonts
+
+webapp/web/assets/fonts/ contains fonts licensed under the SIL Open Font
+License, Version 1.1, not under Apache-2.0:
+  - Inter: Copyright 2016 The Inter Project Authors
+    (https://github.com/rsms/inter). See OFL-Inter.txt.
+  - JetBrains Mono: Copyright 2020 The JetBrains Mono Project Authors
+    (https://github.com/JetBrains/JetBrainsMono). See OFL-JetBrainsMono.txt.
+
+-------------------------------------------------------------------------------
+Trademarks
+
+SiMa.ai, Modalix and Neat, and the logos in webapp/web/assets, are trademarks
+of SiMa.ai, Inc. They are not covered by the Apache License 2.0.
