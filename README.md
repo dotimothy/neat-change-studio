@@ -6,7 +6,9 @@ Give it a **before** photo and an **after** photo of the same scene. It returns 
 
 High-resolution photos are tiled. One global window runs first, then 256-input tiles are run only where the global view saw some change. This lets small objects be found at the scale the model was trained on.
 
-It is a sibling of [Neat Decision Studio](https://github.com/dotimothy/neat-decision-studio). The compiled models are on Hugging Face in the collection [SiMa.ai Change Detection Models](https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b). Results and measurements are in [report.md](report.md).
+It is a sibling of [Neat Decision Studio](https://github.com/dotimothy/neat-decision-studio). The compiled models are on Hugging Face in the collection [SiMa.ai Change Detection Models](https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b). Results and measurements are in [report.md](report.md). The project page is at **[dotimothy.github.io/neat-change-studio](https://dotimothy.github.io/neat-change-studio/)**.
+
+![A test pair detected on the board: the boxes draw in, a detection is highlighted, then the before and after photos are compared with the swipe slider](docs/detect.gif)
 
 ## What you need
 
@@ -102,7 +104,45 @@ The default location is `data/testCYWS` in the repo; set `CYWS_DATA` to use anot
 /media/nvme/cyws/webapp/run.sh --stop
 ```
 
-Pick a test pair or upload two photos (on a phone you can take them with the camera). Choose a preset or adjust settings, and see the boxes, heatmap, tiles and timing. It also works on phones.
+Pick a test pair or upload two photos (on a phone you can take them with the camera). Choose a preset or adjust settings, and see the boxes, heatmap, tiles and timing. It also works on phones. Every screenshot here was taken on a Modalix DevKit, so the timings are the board's own.
+
+**The start screen and a result.** A result shows the boxes, labelled *appeared*, *disappeared* or *changed*, over the after photo with the heat map. Next to it are the MLA time per window, the whole pipeline's time and, for test pairs, the score against the annotated mask.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/landing.png" alt="The start screen: the SiMa.ai logo, See What Changed, and four test pairs to try"></td>
+<td width="50%"><img src="docs/result.png" alt="A result: four changed objects boxed on the after photo, with the timing and accuracy chips above and the test set beside it"></td>
+</tr>
+</table>
+
+**Comparing.** Overlay, side by side, or a swipe slider between before and after. Layers for the heat map, the change mask, the ground truth and the tiles the MLA ran.
+
+![Layers switched on and off on a test pair: heat map, ground-truth outline, change mask and the tiles, then side by side and the swipe slider](docs/compare.gif)
+
+**Tuning.** Presets (Fast, Balanced, Accurate), the windows, the threshold and photo alignment. Each change re-runs straight away. The decoded photos are cached, so a re-run takes about half a second on the board.
+
+![Switching presets and dragging the threshold slider: each change re-runs on the MLA and the boxes update](docs/tuning.gif)
+
+**The whole test set.** Run every test pair with the current settings, scored against the annotated masks: changes found, false alarms, time per pair and F1, pair by pair.
+
+![Run All Pairs: the 28 test pairs run one after another on the MLA, filling the table, and end at 33 of 47 changes found with 2 false alarms in 15 no-change pairs](docs/runall.gif)
+
+**Webcam.** Capture **Before**, change something, then capture **After**. A self-timer (3, 5 or 10 s) counts down before each shot, and a faint ghost of Before helps line up After. **Watch Live** then compares every new frame with Before and keeps the result up to date. Here the camera is fed one of the test pairs.
+
+![The webcam panel: a 3 s countdown captures Before, the scene changes, After is captured and detected, then Watch Live keeps detecting while a small live preview floats over the result](docs/webcam.gif)
+
+**Models.** Settings → Model lists the compiled models on Hugging Face. A model that isn't on the board downloads with progress and a checksum check, and picking one switches the MLA over.
+
+![Settings → Model: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up](docs/models.gif)
+
+**On a phone.** The same page, with a tab bar.
+
+<table>
+<tr>
+<td width="32%"><img src="docs/phone.gif" alt="On a phone: a test pair is tapped and detected, then the Results and Test Set tabs, and another pair"></td>
+<td width="68%"><img src="docs/phone.png" alt="Two phone screenshots: a result with its detections, and the settings with the model catalog"></td>
+</tr>
+</table>
 
 On the host it can run without a board:
 

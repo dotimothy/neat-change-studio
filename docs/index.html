@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neat Change Studio</title>
+<meta name="description" content="Before/after change detection with CYWS (The Change You Want to See, WACV 2023), compiled to one MLA ELF and run on the SiMa.ai Modalix MLA through NEAT, with a web demo.">
+<meta name="theme-color" content="#0c0f14" id="meta-theme">
+<meta property="og:title" content="Neat Change Studio">
+<meta property="og:description" content="Two photos in, boxes around what appeared, disappeared or changed. CYWS on the SiMa.ai Modalix MLA, in one MLA ELF.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://dotimothy.github.io/neat-change-studio/">
+<meta property="og:image" content="https://dotimothy.github.io/neat-change-studio/result.png">
+<link rel="icon" type="image/png" href="assets/neat-mark.png">
+<script>
+  // Mark JS as available and apply a saved theme before first paint (default: dark, or light when the OS prefers it).
+  document.documentElement.classList.add("js");
+  try { var t = localStorage.getItem("cyws-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) { /* storage blocked */ }
+</script>
+<link rel="stylesheet" href="assets/site.css">
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+
+<!-- Icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5M13.5 4.5l-3 15"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M17 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 4 18.5v-10A1.5 1.5 0 0 1 5.5 7H10"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><rect x="8.5" y="8.5" width="7" height="7" rx="1.2"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7"/><path d="M12 10v3.5l2.3 2M9.5 3.5h5M12 3.5v3"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14.5 4.5h5v5M19.5 4.5 13.5 10.5M9.5 19.5h-5v-5M4.5 19.5l6-6"/></symbol>
+</svg>
+
+<a class="skip" href="#main">Skip to Content</a>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="#top" aria-label="Neat Change Studio, back to top">
+      <img class="brand-mark" src="assets/neat-mark.png" alt="" width="48" height="32">
+      <span class="brand-text">
+        <span class="brand-title">Neat Change Studio</span>
+        <span class="brand-sub">Before/After Change Detection · CYWS on the Modalix MLA</span>
+      </span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Sections">
+      <a href="#how">How It Works</a>
+      <a href="#demo">Web Demo</a>
+      <a href="#results">Results</a>
+      <a href="#start">Get Started</a>
+      <a href="#models">Models</a>
+    </nav>
+    <div class="header-actions">
+      <a class="hdr-link" href="https://github.com/dotimothy/neat-change-studio" title="Source Code on GitHub" aria-label="Source code on GitHub"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg><span>GitHub</span></a>
+      <a class="hdr-link" href="https://huggingface.co/dotimothy/sima-cyws" title="Models on Hugging Face" aria-label="Models on Hugging Face"><svg class="ic" aria-hidden="true"><use href="#i-cube"/></svg><span>Hugging Face</span></a>
+      <button type="button" class="icon-btn theme-btn" id="btn-theme" title="Toggle Theme" aria-label="Toggle dark or light theme"><svg class="ic ic-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic ic-sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
+      <button type="button" class="icon-btn menu-btn" id="btn-menu" aria-label="Open Menu" aria-expanded="false" aria-controls="nav"><svg class="ic ic-menu" aria-hidden="true"><use href="#i-menu"/></svg><svg class="ic ic-close" aria-hidden="true"><use href="#i-close"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ======================= Hero ======================= -->
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="wrap">
+    <div class="hero-lockup">
+      <img class="hero-logo logo-for-dark" src="assets/logo_bright.png" alt="SiMa.ai" width="230" height="54" fetchpriority="high">
+      <img class="hero-logo logo-for-light" src="assets/logo_dark.png" alt="SiMa.ai" width="230" height="54">
+      <h1 class="hero-title" id="hero-title">See What Changed</h1>
+    </div>
+    <p class="hero-powered">Powered by <strong>Neat</strong> · <strong>Modalix MLA</strong></p>
+    <p class="hero-sub">Give it a before photo and an after photo of the same scene. It draws boxes around what appeared, disappeared or changed, on the SiMa.ai Modalix MLA. The model is CYWS (The Change You Want to See, WACV 2023), compiled to one MLA ELF and run through NEAT.</p>
+    <div class="cta-row">
+      <a class="btn spectrum" href="https://github.com/dotimothy/neat-change-studio"><svg class="ic" aria-hidden="true" style="stroke:currentColor;fill:none"><use href="#i-code"/></svg>Get the Code</a>
+      <a class="btn" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download the Models</a>
+    </div>
+
+    <figure class="device">
+      <div class="device-bar" aria-hidden="true">
+        <span class="device-dots"><i></i><i></i><i></i></span>
+        <span class="device-url"><span class="dot"></span>https://&lt;board-ip&gt;:8098</span>
+        <span class="device-spacer"></span>
+      </div>
+      <div class="vid" data-vid data-start="3.5">
+        <video width="720" height="450" muted loop playsinline controls preload="metadata" poster="assets/media/detect-still.webp"
+               aria-label="A test pair detected on the board: the boxes draw in, a detection is highlighted, then the before and after photos are compared with the swipe slider">
+          <source src="assets/media/detect.mp4" type="video/mp4">
+          <a href="detect.gif"><img src="assets/media/detect-still.webp" width="720" height="450" alt="A test pair detected on the board, with four boxes on the after photo"></a>
+        </video>
+        <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Test Pair Detected</span></button></div>
+      </div>
+      <figcaption>A test pair detected on a Modalix DevKit: the boxes draw in, one detection is highlighted, then the swipe slider compares before and after.</figcaption>
+    </figure>
+
+    <div class="chipbar" role="group" aria-label="Key Numbers">
+      <div class="metric-group">
+        <div class="metric-group-head"><svg class="ic" aria-hidden="true"><use href="#i-chip"/></svg>Compiled</div>
+        <dl class="metric-group-items">
+          <div class="metric-item"><dt class="metric-label">MLA ELF</dt><dd class="metric-value">1</dd></div>
+          <div class="metric-item"><dt class="metric-label">A65 Stages</dt><dd class="metric-value">0</dd></div>
+        </dl>
+      </div>
+      <div class="metric-group">
+        <div class="metric-group-head"><svg class="ic" aria-hidden="true"><use href="#i-timer"/></svg>On the MLA <span class="tag">bf16</span></div>
+        <dl class="metric-group-items">
+          <div class="metric-item"><dt class="metric-label">Per Pair</dt><dd class="metric-value">35.2<small>ms</small></dd></div>
+          <div class="metric-item"><dt class="metric-label">fps</dt><dd class="metric-value">36</dd></div>
+          <div class="metric-item"><dt class="metric-label">Power</dt><dd class="metric-value">13.2<small>W</small></dd></div>
+        </dl>
+      </div>
+      <div class="metric-group">
+        <div class="metric-group-head"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg>testCYWS <span class="tag">balanced</span></div>
+        <dl class="metric-group-items">
+          <div class="metric-item"><dt class="metric-label">Changes Found</dt><dd class="metric-value">33<small>/47</small></dd></div>
+          <div class="metric-item"><dt class="metric-label">Per 12 MP Pair</dt><dd class="metric-value">0.41<small>s</small></dd></div>
+        </dl>
+      </div>
+    </div>
+    <p class="chip-note">Model latency is <code>Model.benchmark</code> for one 256×256 pair in bf16. Changes found and time per pair are the whole app on the board over the 28-pair test set.</p>
+  </div>
+</section>
+
+<!-- ======================= How it works ======================= -->
+<section class="section" id="how" aria-labelledby="how-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">How It Works</p>
+      <h2 id="how-title">One Network, Two Photos, One MLA ELF</h2>
+      <p class="lead">CYWS is a Siamese ResNet-50 U-Net with co-attention and a CenterNet head. It looks at both photos at once and predicts objects on each side. The whole network runs as a single MLA ELF, with no stage on the A65 CPU; the CPU only decodes the photos and crops the windows.</p>
+    </div>
+
+    <div class="card flow-card">
+      <h3 class="card-title">The Model</h3>
+      <div class="flow" role="img" aria-label="Diagram: the before and after photos go through a shared ResNet-50 encoder, co-attention compares them, U-Net decoders and a CenterNet head predict a heat map, size and offset for each side, all inside one MLA ELF. Boxes found on both sides are changed, only in after are appeared, only in before are disappeared.">
+        <div class="flow-col flow-in">
+          <div class="node"><b>Before</b><span class="mono">in0_before</span><span>256×256 RGB</span></div>
+          <div class="node"><b>After</b><span class="mono">in1_after</span><span>256×256 RGB</span></div>
+        </div>
+        <div class="arrow" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></div>
+        <div class="node elf flow-wide">
+          <span class="elf-tag">One MLA ELF</span>
+          <div class="flow-col">
+            <div class="node"><b>ResNet-50 Encoder</b><span>Shared weights, one pass per photo</span></div>
+            <div class="node hot"><b>Co-Attention</b><span>Each photo's features attend to the other's, so what is missing or new stands out</span></div>
+            <div class="node"><b>U-Net Decoders + CenterNet Head</b><span>Per side: heat map, box size and offset at 256×256</span></div>
+          </div>
+        </div>
+        <div class="arrow" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></div>
+        <div class="flow-col">
+          <div class="node"><b>One Fused Output</b><span class="mono">(10, 256, 256)</span><span>heat, size, offset for before and after</span></div>
+          <div class="outs">
+            <span class="pill"><i class="sw changed"></i>On Both Sides: Changed</span>
+            <span class="pill"><i class="sw appeared"></i>Only in After: Appeared</span>
+            <span class="pill"><i class="sw disappeared"></i>Only in Before: Disappeared</span>
+          </div>
+        </div>
+      </div>
+      <p class="small">The ONNX graph has 49.47M parameters and about 75 GMAC per pair. Peaks in each side's heat map become boxes; a before box and an after box that overlap are merged into one changed box.</p>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:16px">
+      <div class="card">
+        <h3 class="card-title">Tiling for 12 MP Photos</h3>
+        <div class="tiling">
+          <div>
+            <p>The model was trained on 256×256 inputs, and a phone photo is 12 MP. Small objects vanish when the whole photo is shrunk to 256, so the app tiles it.</p>
+            <ul class="ticks">
+              <li><b>Global window first.</b> The whole photo runs once.</li>
+              <li><b>Gated tiles next.</b> Tiles of 0.45 × the short side run only where the global heat is at least 0.25.</li>
+              <li><b>Merge.</b> Boxes from all windows are mapped back to the photo and merged.</li>
+            </ul>
+            <p class="small" style="margin-top:12px">On the test set the balanced preset runs 3.4 windows per pair on average.</p>
+          </div>
+          <div class="tile-figs" aria-hidden="true">
+            <figure class="tile-fig">
+              <div class="photo">
+                <span class="obj" style="left:18%;top:52%;width:10%;height:14%"></span>
+                <span class="obj" style="left:50%;top:40%;width:7%;height:10%"></span>
+                <span class="heat" style="left:14%;top:47%;width:18%;height:24%"></span>
+                <span class="heat" style="left:46%;top:36%;width:15%;height:18%"></span>
+                <span class="win global"></span>
+              </div>
+              <figcaption><b>1 · Global</b> Heat Shows Where</figcaption>
+            </figure>
+            <figure class="tile-fig">
+              <div class="photo">
+                <span class="obj" style="left:18%;top:52%;width:10%;height:14%"></span>
+                <span class="obj" style="left:50%;top:40%;width:7%;height:10%"></span>
+                <span class="win t" style="left:0;top:0;width:33.75%;height:45%"></span>
+                <span class="win t" style="left:33.1%;top:0;width:33.75%;height:45%"></span>
+                <span class="win t" style="left:66.25%;top:0;width:33.75%;height:45%"></span>
+                <span class="win t run" style="left:0;top:27.5%;width:33.75%;height:45%"></span>
+                <span class="win t run" style="left:33.1%;top:27.5%;width:33.75%;height:45%"></span>
+                <span class="win t" style="left:66.25%;top:27.5%;width:33.75%;height:45%"></span>
+                <span class="win t" style="left:0;top:55%;width:33.75%;height:45%"></span>
+                <span class="win t" style="left:33.1%;top:55%;width:33.75%;height:45%"></span>
+                <span class="win t" style="left:66.25%;top:55%;width:33.75%;height:45%"></span>
+                <span class="det" style="left:17%;top:50%;width:12%;height:18%"></span>
+                <span class="det c" style="left:49%;top:38%;width:9%;height:14%"></span>
+              </div>
+              <figcaption><b>2 · Tiles</b> Only Where It Is Hot</figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">Compiling to One ELF</h3>
+        <p>A self-contained rewrite (<code>model/cyws_mla.py</code>) loads the upstream checkpoint with 0 missing and 0 unexpected keys and changes only how the math is written. Each change came from a probe compile that failed:</p>
+        <ul class="ticks">
+          <li>BatchNorm folded; co-attention written as Split/Concat, Einsum and Softmax.</li>
+          <li>scSE gate: the 1-channel spatial gate is expanded with a fixed 1→C conv of ones, because two broadcast multiplies failed to compile.</li>
+          <li>The 6144→256 3×3 decoder conv is split into 3 input-channel chunks, because the single conv failed after "large tensor support".</li>
+          <li>The CenterNet head is fused, and all outputs go into one tensor so they cannot be swapped.</li>
+        </ul>
+        <p class="small" style="margin-top:12px">Result in bf16: one MLA ELF plus 7 EV74 plugins, no A65 stage. Against upstream in float64 the rewrite differs by at most 1.2e-12.</p>
+      </div>
+    </div>
+
+    <div class="card table-card" style="margin-top:16px">
+      <div class="tc-head"><h3 class="card-title" id="tbl-prec">Precisions Tried</h3></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tbl-prec">
+        <table class="fit-sm" aria-labelledby="tbl-prec">
+          <thead><tr><th scope="col">Precision</th><th scope="col">Result</th><th scope="col">Notes</th></tr></thead>
+          <tbody>
+            <tr class="hl"><th scope="row">bf16</th><td data-label="Result"><strong>1 MLA ELF, 0 A65</strong></td><td data-label="Notes">Needs the XLA no-vectorize flag; the shipped model</td></tr>
+            <tr><th scope="row">w8a16 (min-max)</th><td data-label="Result">1 MLA ELF, 0 A65</td><td data-label="Notes">Compiles; less accurate than bf16 on the board</td></tr>
+            <tr><th scope="row">int8 (min-max)</th><td data-label="Result">Quantization failed</td><td data-label="Notes">Concat input/output scale ratio too small to represent</td></tr>
+            <tr><th scope="row">int8 (MSE)</th><td data-label="Result">Quantization failed</td><td data-label="Notes">Same Concat error; the head conv also saturates</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Web demo ======================= -->
+<section class="section" id="demo" aria-labelledby="demo-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">The Web Demo</p>
+      <h2 id="demo-title">A Browser Front End Served From the Board</h2>
+      <p class="lead">A Flask app on the DevKit, on port 8098. Pick a test pair or upload two photos, choose a preset, and see the boxes, heat map, tiles and timing. Every screenshot here was taken on a Modalix DevKit, so the timings are the board's own.</p>
+    </div>
+
+    <div class="features">
+      <article class="card feature">
+        <div class="feature-media">
+          <a class="shot" href="result.png" data-caption="A result: four changed objects boxed on the after photo, with the timing and accuracy chips above and the test set beside it.">
+            <img src="result.png" width="1280" height="800" loading="lazy" decoding="async" alt="A result: four changed objects boxed on the after photo, with the timing and accuracy chips above and the test set beside it">
+          </a>
+        </div>
+        <div class="feature-text">
+          <p class="card-title">Result</p>
+          <h3>Boxes, Labels and Timing</h3>
+          <p>Boxes are labelled appeared, disappeared or changed and drawn over the after photo with the heat map. Next to them: the MLA time per window, the whole pipeline's time and, for test pairs, the score against the annotated mask.</p>
+          <div class="pills"><span class="pill"><i class="sw appeared"></i>Appeared</span><span class="pill"><i class="sw disappeared"></i>Disappeared</span><span class="pill"><i class="sw changed"></i>Changed</span></div>
+        </div>
+      </article>
+
+      <article class="card feature flip">
+        <div class="feature-media">
+          <div class="shot vid" data-vid>
+            <video width="720" height="450" muted loop playsinline controls preload="none" poster="assets/media/compare-still.webp"
+                   aria-label="Layers switched on and off on a test pair: heat map, ground-truth outline, change mask and the tiles, then side by side and the swipe slider">
+              <source src="assets/media/compare.mp4" type="video/mp4">
+              <a href="compare.gif"><img src="assets/media/compare-still.webp" width="720" height="450" loading="lazy" alt="Pillows Swapped with the change mask, the ground-truth outline and the tiles switched on"></a>
+            </video>
+            <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Comparing</span></button><a class="vid-btn lb-open" href="compare.gif" data-video="assets/media/compare.mp4" data-poster="assets/media/compare-still.webp" data-caption="Layers switched on and off on a test pair: heat map, ground-truth outline, change mask and the tiles, then side by side and the swipe slider."><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Enlarge<span class="sr-only">: Comparing</span></a></div>
+          </div>
+        </div>
+        <div class="feature-text">
+          <p class="card-title">Compare</p>
+          <h3>Overlay, Side by Side or Swipe</h3>
+          <p>Three ways to compare before and after, and layers for the heat map, the change mask, the ground truth and the tiles the MLA ran.</p>
+          <div class="pills"><span class="pill on">Overlay</span><span class="pill">Side by Side</span><span class="pill">Swipe</span></div>
+        </div>
+      </article>
+
+      <article class="card feature">
+        <div class="feature-media">
+          <div class="shot vid" data-vid>
+            <video width="720" height="450" muted loop playsinline controls preload="none" poster="assets/media/tuning-still.webp"
+                   aria-label="Switching presets and dragging the threshold slider: each change re-runs on the MLA and the boxes update">
+              <source src="assets/media/tuning.mp4" type="video/mp4">
+              <a href="tuning.gif"><img src="assets/media/tuning-still.webp" width="720" height="450" loading="lazy" alt="Settings with the threshold lowered to 0.15 while the pair re-runs"></a>
+            </video>
+            <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Tuning</span></button><a class="vid-btn lb-open" href="tuning.gif" data-video="assets/media/tuning.mp4" data-poster="assets/media/tuning-still.webp" data-caption="Switching presets and dragging the threshold slider: each change re-runs on the MLA and the boxes update."><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Enlarge<span class="sr-only">: Tuning</span></a></div>
+          </div>
+        </div>
+        <div class="feature-text">
+          <p class="card-title">Tuning</p>
+          <h3>Presets, Windows and Threshold</h3>
+          <p>Fast runs the global window only, Balanced adds tiles where the global heat map saw a change, and Accurate runs every tile. The threshold, the windows and photo alignment can be set by hand.</p>
+          <p>Each change re-runs straight away. The decoded photos are cached, so a re-run takes about half a second on the board.</p>
+          <div class="pills"><span class="pill">Fast</span><span class="pill on">Balanced</span><span class="pill">Accurate</span></div>
+        </div>
+      </article>
+
+      <article class="card feature flip">
+        <div class="feature-media">
+          <div class="shot vid" data-vid>
+            <video width="720" height="450" muted loop playsinline controls preload="none" poster="assets/media/runall-still.webp"
+                   aria-label="Run All Pairs: the 28 test pairs run one after another on the MLA, filling the table, and end at 33 of 47 changes found with 2 false alarms in 15 no-change pairs">
+              <source src="assets/media/runall.mp4" type="video/mp4">
+              <a href="runall.gif"><img src="assets/media/runall-still.webp" width="720" height="450" loading="lazy" alt="The whole test set scored: 33 of 47 regions found, 2 of 15 false alarms, 416 ms per pair"></a>
+            </video>
+            <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Whole Test Set</span></button><a class="vid-btn lb-open" href="runall.gif" data-video="assets/media/runall.mp4" data-poster="assets/media/runall-still.webp" data-caption="Run All Pairs: the 28 test pairs run one after another on the MLA, filling the table, and end at 33 of 47 changes found with 2 false alarms in 15 no-change pairs."><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Enlarge<span class="sr-only">: Whole Test Set</span></a></div>
+          </div>
+        </div>
+        <div class="feature-text">
+          <p class="card-title">Whole Test Set</p>
+          <h3>Every Pair, Scored</h3>
+          <p>Run every test pair with the current settings and score it against the annotated masks: changes found, false alarms in the pairs where nothing changed, mean F1 and time per pair, with a row per pair.</p>
+        </div>
+      </article>
+
+      <article class="card feature">
+        <div class="feature-media">
+          <div class="shot vid" data-vid>
+            <video width="720" height="450" muted loop playsinline controls preload="none" poster="assets/media/webcam-still.webp"
+                   aria-label="The webcam panel: a 3 s countdown captures Before, the scene changes, After is captured and detected, then Watch Live keeps detecting while a small live preview floats over the result">
+              <source src="assets/media/webcam.mp4" type="video/mp4">
+              <a href="webcam.gif"><img src="assets/media/webcam-still.webp" width="720" height="450" loading="lazy" alt="Webcam result: changed and disappeared boxes on the sofa scene"></a>
+            </video>
+            <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Webcam Capture</span></button><a class="vid-btn lb-open" href="webcam.gif" data-video="assets/media/webcam.mp4" data-poster="assets/media/webcam-still.webp" data-caption="The webcam panel: a 3 s countdown captures Before, the scene changes, After is captured and detected, then Watch Live keeps detecting while a small live preview floats over the result."><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Enlarge<span class="sr-only">: Webcam Capture</span></a></div>
+          </div>
+          <div class="shot-row">
+            <a class="shot" href="webcam_ghost.png" data-caption="A faint ghost of Before over the live camera helps line up After.">
+              <span class="cap">Ghost</span>
+              <img src="webcam_ghost.png" width="1280" height="800" loading="lazy" decoding="async" alt="The webcam panel with a faint ghost of the Before shot over the live camera, and the Timer, Ghost and Watch Live buttons">
+            </a>
+            <a class="shot" href="webcam_live.png" data-caption="Watch Live: each new frame is compared with Before, with a small live preview over the result.">
+              <span class="cap">Live</span>
+              <img src="webcam_live.png" width="1280" height="800" loading="lazy" decoding="async" alt="Watch Live: detections on the sofa scene with a floating live preview at 1.8 fps">
+            </a>
+          </div>
+        </div>
+        <div class="feature-text">
+          <p class="card-title">Webcam</p>
+          <h3>Capture, Change, Capture</h3>
+          <p>Capture Before, change something, then capture After. A self-timer (3, 5 or 10 s) counts down before each shot, and a faint ghost of Before helps line up After.</p>
+          <p>Watch Live then compares every new frame with Before and keeps the result up to date, at about 2 frames/s on the board with a 1080p webcam, most of it capture and upload. Browsers allow the camera only on HTTPS, so port 8098 speaks both HTTP and HTTPS.</p>
+          <div class="pills"><span class="pill">Timer <span class="n">3 · 5 · 10 s</span></span><span class="pill">Ghost</span><span class="pill on">Watch Live</span></div>
+        </div>
+      </article>
+
+      <article class="card feature flip">
+        <div class="feature-media">
+          <div class="shot vid" data-vid>
+            <video width="720" height="450" muted loop playsinline controls preload="none" poster="assets/media/models-still.webp"
+                   aria-label="Settings → Model: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up">
+              <source src="assets/media/models.mp4" type="video/mp4">
+              <a href="models.gif"><img src="assets/media/models-still.webp" width="720" height="450" loading="lazy" alt="The switch card: w8a16 is ready on the MLA"></a>
+            </video>
+            <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Model Switch</span></button><a class="vid-btn lb-open" href="models.gif" data-video="assets/media/models.mp4" data-poster="assets/media/models-still.webp" data-caption="Settings → Model: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up."><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Enlarge<span class="sr-only">: Model Switch</span></a></div>
+          </div>
+        </div>
+        <div class="feature-text">
+          <p class="card-title">Models</p>
+          <h3>A Hugging Face Catalog in Settings</h3>
+          <p>Settings → Model lists the compiled models on <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a>. A model that is not on the board downloads with progress, cancel and resume, and its SHA-256 is checked before it can be loaded. Picking one switches the MLA over.</p>
+          <p>On a fresh board, the first model downloaded loads by itself.</p>
+        </div>
+      </article>
+
+      <article class="card feature">
+        <div class="feature-media">
+          <div class="phone-media">
+          <div class="shot vid phone-vid" data-vid>
+            <video width="390" height="844" muted loop playsinline controls preload="none" poster="assets/media/phone-still.webp"
+                   aria-label="On a phone: a test pair is tapped and detected, then the Results and Test Set tabs, and another pair">
+              <source src="assets/media/phone.mp4" type="video/mp4">
+              <a href="phone.gif"><img src="assets/media/phone-still.webp" width="390" height="844" loading="lazy" alt="A phone showing Three Cups Removed with its detections"></a>
+            </video>
+            <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Phone</span></button><a class="vid-btn lb-open" href="phone.gif" data-video="assets/media/phone.mp4" data-poster="assets/media/phone-still.webp" data-caption="On a phone: a test pair is tapped and detected, then the Results and Test Set tabs, and another pair."><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Enlarge<span class="sr-only">: Phone</span></a></div>
+          </div>
+          <a class="shot" href="phone.png" data-caption="Two phone screenshots: a result with its detections, and the settings with the model catalog.">
+            <img src="phone.png" width="1280" height="860" loading="lazy" decoding="async" alt="Two phone screenshots: a result with its detections, and the settings with the model catalog">
+          </a>
+          </div>
+        </div>
+        <div class="feature-text">
+          <p class="card-title">Phone</p>
+          <h3>The Same Page, With a Tab Bar</h3>
+          <p>On a phone the page switches to a tab bar for Detect, Test Set, Results and Settings. Photos can be taken with the phone's camera and are shrunk to a 2048 px long side in the browser before upload, which makes the upload and the board's decode several times faster.</p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Results ======================= -->
+<section class="section" id="results" aria-labelledby="results-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Results</p>
+      <h2 id="results-title">Measured on a Modalix DevKit</h2>
+      <p class="lead">NEAT 0.5.0, platform 2.1.3. Dataset: testCYWS, the author's private set of 28 before/after phone-photo pairs (4208×3120, 4000×3000 and 1920×1080) with 47 annotated changes; 15 pairs have no change. Full details in <a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/report.md">report.md</a>.</p>
+    </div>
+
+    <div class="tiles-grid">
+      <div class="mtile"><div class="v">35.2<small>ms</small></div><div class="k">Per Pair · <span class="nt">bf16</span></div><div class="d"><code>Model.benchmark</code>, 200 samples, plugin latency included</div></div>
+      <div class="mtile"><div class="v">36<small>fps</small></div><div class="k">At 13.2 W</div><div class="d">Same benchmark run</div></div>
+      <div class="mtile"><div class="v">28<small>ms</small></div><div class="k">Per Pair, Streamed</div><div class="d">Through the app backend with 2 pairs in flight</div></div>
+      <div class="mtile"><div class="v">1.000</div><div class="k">Box Agreement vs FP32</div><div class="d">148 of 148 FP32 boxes, bf16 on the board</div></div>
+    </div>
+
+    <div class="results-grid two">
+      <div class="card table-card">
+        <div class="tc-head">
+          <h3 class="card-title" id="tbl-lat">Latency: Whole App Per Pair</h3>
+          <p>Board, testCYWS, mean of 28 pairs, <code>--work-long 1920</code>, bf16.</p>
+        </div>
+        <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tbl-lat">
+          <table class="stack-sm" aria-labelledby="tbl-lat">
+            <thead><tr><th scope="col">Preset</th><th scope="col" class="num">Windows/Pair</th><th scope="col" class="num">Wall Time</th><th scope="col" class="num">Load</th><th scope="col" class="num">Stream</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">fast</th><td class="num" data-label="Windows/Pair">1.07</td><td class="num" data-label="Wall Time"><strong>354 ms</strong></td><td class="num" data-label="Load">181 ms</td><td class="num" data-label="Stream">170 ms</td></tr>
+              <tr class="hl"><th scope="row">balanced</th><td class="num" data-label="Windows/Pair">3.39</td><td class="num" data-label="Wall Time"><strong>409 ms</strong></td><td class="num" data-label="Load">181 ms</td><td class="num" data-label="Stream">260 ms</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="tbl-note">Load is decode plus GT mask; stream is crops, MLA and decode. Decoding the next pair and writing outputs overlap the MLA work. In the web demo one 12 MP test pair takes ~0.9 s on the first run and ~0.55 s for a re-run with new settings (the whole HTTP request). w8a16 is 27.2 ms per pair in <code>Model.benchmark</code>.</p>
+      </div>
+
+      <div class="card table-card">
+        <div class="tc-head">
+          <h3 class="card-title" id="tbl-acc">Accuracy vs ONNX FP32</h3>
+          <p>Raw outputs on 97 inputs: 28 global views, 64 tiles and 3 swap pairs.</p>
+        </div>
+        <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tbl-acc">
+          <table class="stack-sm" aria-labelledby="tbl-acc">
+            <thead><tr><th scope="col">Metric</th><th scope="col" class="num"><span class="nt">bf16</span> Board</th><th scope="col" class="num"><span class="nt">w8a16</span> Board</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Heat cosine, min / mean</th><td class="num" data-label="bf16 Board"><strong>0.994</strong> / 0.999</td><td class="num" data-label="w8a16 Board">0.826 / 0.974</td></tr>
+              <tr><th scope="row">Heat max abs error</th><td class="num" data-label="bf16 Board">0.058</td><td class="num" data-label="w8a16 Board">0.223</td></tr>
+              <tr><th scope="row">wh/offset rel. error, median / p95</th><td class="num" data-label="bf16 Board">0.003 / 0.014</td><td class="num" data-label="w8a16 Board">0.014 / 0.062</td></tr>
+              <tr><th scope="row">Box agreement (148 FP32 boxes)</th><td class="num" data-label="bf16 Board"><strong>1.000</strong></td><td class="num" data-label="w8a16 Board">0.966</td></tr>
+              <tr><th scope="row">AP50 with FP32 boxes as GT</th><td class="num" data-label="bf16 Board">0.928</td><td class="num" data-label="w8a16 Board">0.956</td></tr>
+              <tr><th scope="row">Swap test (3 pairs)</th><td class="num" data-label="bf16 Board">pass (×17–22 margin)</td><td class="num" data-label="w8a16 Board">pass</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="tbl-note">Heat cosine is computed only on inputs whose FP32 heat peak is at least half the threshold. Board bf16 vs the host compiler simulator: cosine ≥ 0.9998.</p>
+      </div>
+    </div>
+
+    <div class="card table-card" style="margin-top:16px">
+      <div class="tc-head">
+        <h3 class="card-title" id="tbl-det">Change Detection on testCYWS</h3>
+        <p>Pixel metrics are pooled over all pairs (filled boxes vs the GT mask). A component is found when a box covers ≥ 50% of it, or has IoU ≥ 0.3 with its bbox. False-alarm pairs are no-change pairs that get at least one box.</p>
+      </div>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tbl-det">
+        <table class="stack-sm" aria-labelledby="tbl-det">
+          <thead><tr><th scope="col">Configuration</th><th scope="col">Backend</th><th scope="col" class="num">Pooled F1</th><th scope="col" class="num">Pooled IoU</th><th scope="col" class="num">Found</th><th scope="col" class="num">False-Alarm Pairs (of 15)</th><th scope="col" class="num">Windows/Pair</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">first board run (native res, every tile, thr 0.3)</th><td data-label="Backend">board bf16</td><td class="num" data-label="Pooled F1">0.574</td><td class="num" data-label="Pooled IoU">—</td><td class="num" data-label="Found">—</td><td class="num" data-label="False-Alarm Pairs (of 15)">—</td><td class="num" data-label="Windows/Pair">13</td></tr>
+            <tr><th scope="row">global only, thr 0.3</th><td data-label="Backend">host FP32</td><td class="num" data-label="Pooled F1">0.589</td><td class="num" data-label="Pooled IoU">0.417</td><td class="num" data-label="Found">29/47</td><td class="num" data-label="False-Alarm Pairs (of 15)">1</td><td class="num" data-label="Windows/Pair">1.07</td></tr>
+            <tr><th scope="row"><code>fast</code></th><td data-label="Backend">host FP32</td><td class="num" data-label="Pooled F1">0.590</td><td class="num" data-label="Pooled IoU">0.418</td><td class="num" data-label="Found">30/47</td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td><td class="num" data-label="Windows/Pair">1.07</td></tr>
+            <tr><th scope="row"><code>fast</code></th><td data-label="Backend"><b>board bf16</b></td><td class="num" data-label="Pooled F1">0.585</td><td class="num" data-label="Pooled IoU">0.413</td><td class="num" data-label="Found">29/47</td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td><td class="num" data-label="Windows/Pair">1.07</td></tr>
+            <tr><th scope="row"><code>balanced</code></th><td data-label="Backend">host FP32</td><td class="num" data-label="Pooled F1">0.594</td><td class="num" data-label="Pooled IoU">0.422</td><td class="num" data-label="Found">34/47</td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td><td class="num" data-label="Windows/Pair">3.46</td></tr>
+            <tr class="hl"><th scope="row"><code>balanced</code></th><td data-label="Backend"><b>board bf16</b></td><td class="num" data-label="Pooled F1"><strong>0.587</strong></td><td class="num" data-label="Pooled IoU">0.415</td><td class="num" data-label="Found"><strong>33/47</strong></td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td><td class="num" data-label="Windows/Pair">3.39</td></tr>
+            <tr><th scope="row"><code>balanced</code></th><td data-label="Backend">board w8a16</td><td class="num" data-label="Pooled F1">0.581</td><td class="num" data-label="Pooled IoU">0.410</td><td class="num" data-label="Found">31/47</td><td class="num" data-label="False-Alarm Pairs (of 15)">3</td><td class="num" data-label="Windows/Pair">3.32</td></tr>
+            <tr><th scope="row"><code>accurate</code></th><td data-label="Backend">host FP32</td><td class="num" data-label="Pooled F1">0.591</td><td class="num" data-label="Pooled IoU">0.420</td><td class="num" data-label="Found">34/47</td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td><td class="num" data-label="Windows/Pair">13.3</td></tr>
+            <tr><th scope="row"><code>balanced</code> + <code>--register</code></th><td data-label="Backend">host FP32</td><td class="num" data-label="Pooled F1">0.588</td><td class="num" data-label="Pooled IoU">0.416</td><td class="num" data-label="Found">33/47</td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td><td class="num" data-label="Windows/Pair">5.36</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tbl-note">The settings were tuned on these same 28 pairs (about 1,900 configurations), so the numbers are optimistic for new scenes; differences of about 0.01 F1 or one component are noise. Pixel F1 is capped near 0.6 because CYWS produces boxes while the GT masks follow object outlines, so the number of components found is the more useful measure.</p>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:16px">
+      <div class="card table-card">
+        <div class="tc-head"><h3 class="card-title" id="tbl-presets">Presets</h3><p>testCYWS, bf16 on the board.</p></div>
+        <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tbl-presets">
+          <table class="fit-sm" aria-labelledby="tbl-presets">
+            <thead><tr><th scope="col">Preset</th><th scope="col">What It Runs</th><th scope="col">Result</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>fast</code></th><td data-label="What It Runs">The global window only</td><td data-label="Result">29 of 47 changes found, ~0.35 s per 12 MP pair</td></tr>
+              <tr class="hl"><th scope="row"><code>balanced</code><br><span class="small">default</span></th><td data-label="What It Runs">Global window, then tiles of 0.45 × the short side where the global heat is ≥ 0.25</td><td data-label="Result">33 of 47, ~0.41 s per pair, 3.4 windows on average</td></tr>
+              <tr><th scope="row"><code>accurate</code></th><td data-label="What It Runs">Global window plus every tile</td><td data-label="Result">Finds what balanced finds, at ~4× the MLA time</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3 class="card-title">Where It Fails</h3>
+        <ul class="ticks">
+          <li>Objects of about 60 px in a 12 MP photo are missed. Native resolution with three tiling levels at thr 0.2 finds 4 of 7, at the cost of 12 false-alarm pairs and 178 windows per pair.</li>
+          <li>Camera parallax can cause a false alarm. <code>--register</code> (SIFT + MAGSAC, then a ZNCC check) removes one such case, at about 0.6–0.85 s of A65 time per pair.</li>
+          <li>One no-change pair may have a GT mask that is too faint rather than an unchanged scene.</li>
+        </ul>
+        <p class="small" style="margin-top:12px">The board stays within 0.01 F1 and one component of FP32 on the host (34/47, F1 0.594).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Get started ======================= -->
+<section class="section" id="start" aria-labelledby="start-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Get Started</p>
+      <h2 id="start-title">From a Fresh DevKit to Detections</h2>
+      <p class="lead">Download the compiled model from Hugging Face; building it from scratch is optional.</p>
+    </div>
+
+    <div class="start-grid">
+      <div class="card">
+        <h3 class="card-title">What You Need</h3>
+        <div class="req-group">
+          <h4>To Run It</h4>
+          <ul class="ticks">
+            <li>A Modalix DevKit with the NEAT SDK 0.5.0 (platform 2.1.3) and its <code>pyneat</code> venv, in <code>~/pyneat</code> or set by <code>PYNEAT_VENV</code>.</li>
+            <li>ssh from the host to the board; passwordless is easiest. <code>deploy.sh</code> uses ssh and rsync.</li>
+            <li>On the board: numpy, OpenCV 4.4 or later (for SIFT), Pillow and Flask. <code>./setup.sh</code> checks them and <code>./setup.sh --install</code> installs what is missing.</li>
+          </ul>
+        </div>
+        <div class="req-group">
+          <h4>To Build the Model (Optional)</h4>
+          <ul class="ticks">
+            <li>uv, Python 3 and PyTorch on the host.</li>
+            <li>The SiMa NEAT SDK container with the Model Compiler.</li>
+            <li><code>./run_all.sh</code> reproduces everything on the host: venv, dataset, upstream code and checkpoint, reference check, ONNX export, probe compiles, calibration, the bf16/w8a16 compile and the FP32 reference, then the board evaluation. The board steps need <code>BOARD=sima@&lt;devkit-ip&gt;</code> and passwordless ssh; <code>SKIP_BOARD=1</code> skips them.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="code">
+          <div class="code-head"><span class="where"><i></i>1 · Copy to the Board · Host</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Step 1 Commands</span></button></div>
+<pre><code>BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh
+<span class="c"># or also copy a model you compiled yourself:</span>
+BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh build/bf16/cyws_bf16_mpk.tar.gz
+<span class="c"># also copy your own test pairs from data/testCYWS:</span>
+BOARD=sima@&lt;devkit-ip&gt; ./deploy.sh --with-data</code></pre>
+        </div>
+        <div class="code">
+          <div class="code-head"><span class="where"><i></i>2 · Get the Model · Board</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Step 2 Commands</span></button></div>
+<pre><code>cd /media/nvme/cyws
+webapp/run.sh --fetch bf16       <span class="c"># or w8a16, or all</span>
+webapp/run.sh --list-hub         <span class="c"># what Hugging Face has, and what is here</span>
+./setup.sh --fetch               <span class="c"># check the board, then fetch bf16</span></code></pre>
+        </div>
+        <div class="code">
+          <div class="code-head"><span class="where"><i></i>3 · Detect · Board</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Step 3 Commands</span></button></div>
+<pre><code><span class="c"># one pair</span>
+./run.sh --mode static --before before.jpg --after after.jpg --out out/one
+<span class="c"># a whole dataset of your own pairs, with metrics against the GT masks</span>
+./run.sh --mode dataset --dataset-dir data/testCYWS --out out/testcyws</code></pre>
+        </div>
+        <div class="code">
+          <div class="code-head"><span class="where"><i></i>4 · Web Demo · Board</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Step 4 Commands</span></button></div>
+<pre><code>/media/nvme/cyws/webapp/run.sh --daemon   <span class="c"># http://&lt;board-ip&gt;:8098/</span>
+/media/nvme/cyws/webapp/run.sh --stop</code></pre>
+        </div>
+        <p class="small">testCYWS is the author's private set and is not published, so bring your own pairs in this layout: <code>images/&lt;id&gt;_ref.jpg</code> (before), <code>images/&lt;id&gt;_cap.jpg</code> (after) and, for metrics, <code>masks/&lt;id&gt;.jpg</code>. The default folder is <code>data/testCYWS</code>; set <code>CYWS_DATA</code> to use another one.</p>
+        <p class="small">Only one app may use the MLA at a time, so stop other demos first; <code>deploy.sh</code> refuses while another MLA app runs unless <code>FORCE=1</code>. The web demo can also download models itself: Settings → Model, then Download. Every download is checked against its SHA-256.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Models ======================= -->
+<section class="section" id="models" aria-labelledby="models-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Models</p>
+      <h2 id="models-title">Two Compiled Builds on Hugging Face</h2>
+      <p class="lead">Both are single-ELF MPKs for the Modalix MLA, in <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a> and the collection <a href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b">SiMa.ai Change Detection Models</a>.</p>
+    </div>
+
+    <div class="grid grid-2">
+      <article class="card model-card rec">
+        <div class="mc-head"><span class="mc-name">bf16</span><span class="mc-prec">BF16</span><span class="badge">Default</span></div>
+        <p class="mc-desc">The most accurate build: on the board it matches the FP32 model's boxes one for one.</p>
+        <dl class="kv">
+          <div><dt>Latency</dt><dd>35.2 <small>ms / pair</small></dd></div>
+          <div><dt>Box Agreement</dt><dd>1.000</dd></div>
+          <div><dt>testCYWS Found</dt><dd>33/47 <small>F1 0.587</small></dd></div>
+          <div><dt>Size</dt><dd>114 <small>MB</small></dd></div>
+        </dl>
+        <div class="mc-foot">
+          <a class="btn sm" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Get bf16</a>
+        </div>
+      </article>
+
+      <article class="card model-card">
+        <div class="mc-head"><span class="mc-name">w8a16</span><span class="mc-prec">A_BF16_W_INT8</span><span class="badge alt">Alternative</span></div>
+        <p class="mc-desc">Int8 weights with bf16 activations. Smaller, but less accurate on the board than bf16 and barely faster per pair.</p>
+        <dl class="kv">
+          <div><dt>Latency</dt><dd>27.2 <small>ms / pair</small></dd></div>
+          <div><dt>Box Agreement</dt><dd>0.966</dd></div>
+          <div><dt>testCYWS Found</dt><dd>31/47 <small>F1 0.581</small></dd></div>
+          <div><dt>Size</dt><dd>68 <small>MB</small></dd></div>
+        </dl>
+        <div class="mc-foot">
+          <a class="btn sm" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Get w8a16</a>
+        </div>
+      </article>
+    </div>
+    <p class="small" style="margin-top:14px">Latency is <code>Model.benchmark</code>. testCYWS numbers use the balanced preset on the board. Both models take <code>in0_before</code> and <code>in1_after</code> (float32 256×256×3 HWC, RGB, pixel / 255) and return one fused <code>(10, 256, 256)</code> output.</p>
+  </div>
+</section>
+
+</main>
+
+<!-- ======================= Footer ======================= -->
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <h2 class="card-title">License and Credits</h2>
+        <ul>
+          <li>The code is under the Apache License 2.0 (<a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/LICENSE">LICENSE</a>, <a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/NOTICE">NOTICE</a>).</li>
+          <li>CYWS is by Ragav Sachdeva and Andrew Zisserman (<a href="https://github.com/ragavsachdeva/The-Change-You-Want-to-See">The Change You Want to See</a>, WACV 2023). Its authors have confirmed that CYWS, its code and pretrained weights, is released under the Apache License 2.0; see NOTICE. The compiled models are derived from those weights and are also Apache-2.0.</li>
+          <li>Inter and JetBrains Mono are under the SIL Open Font License 1.1 (<a href="assets/fonts/OFL-Inter.txt">Inter</a>, <a href="assets/fonts/OFL-JetBrainsMono.txt">JetBrains Mono</a>).</li>
+          <li>SiMa.ai, Modalix, Neat and the SiMa.ai and Neat logos are trademarks of SiMa.ai and are not covered by the Apache License.</li>
+        </ul>
+        <div class="foot-links" style="margin-top:16px">
+          <a class="btn sm" href="https://github.com/dotimothy/neat-change-studio"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Neat Change Studio</a>
+          <a class="btn sm" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-cube"/></svg>Models</a>
+          <a class="btn sm" href="https://github.com/dotimothy/neat-decision-studio"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Neat Decision Studio</a>
+          <a class="btn sm" href="https://github.com/ragavsachdeva/The-Change-You-Want-to-See"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Upstream CYWS</a>
+        </div>
+      </div>
+      <div>
+        <h2 class="card-title">Citation</h2>
+        <div class="code">
+          <div class="code-head"><span class="where"><i></i>BibTeX</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> BibTeX</span></button></div>
+<pre class="wrap-pre"><code>@inproceedings{sachdeva2023change,
+  title={The Change You Want to See},
+  author={Sachdeva, Ragav and Zisserman, Andrew},
+  booktitle={Winter Conference on Applications of Computer Vision (WACV)},
+  year={2023}
+}</code></pre>
+        </div>
+      </div>
+    </div>
+    <div class="foot-base">
+      <span class="fb-brand"><img class="brand-mark" src="assets/neat-mark.png" alt="" width="36" height="24" loading="lazy"><span>Neat Change Studio · Powered by <strong>Neat</strong> on the <strong>Modalix MLA</strong></span></span>
+      <a href="#top">Back to Top</a>
+    </div>
+  </div>
+</footer>
+
+<dialog class="lightbox" id="lightbox" aria-labelledby="lb-cap">
+  <button type="button" class="icon-btn lb-close" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
+  <figure><div class="lb-media"></div><figcaption id="lb-cap">Screenshot</figcaption></figure>
+</dialog>
+<div class="sr-only" role="status" aria-live="polite" id="copy-status"></div>
+
+</body>
+</html>
