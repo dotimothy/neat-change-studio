@@ -63,8 +63,8 @@ MAX_RESULTS = 24          # rendered results kept in memory
 MAX_DECODED = 6           # decoded pairs kept, so re-runs with new settings skip the JPEG decode
 MAX_UPLOADS = 20
 MODELS = OrderedDict([
-    ("bf16", {"file": "cyws_bf16_mpk.tar.gz", "label": "bf16 · Most Faithful", "family": "cyws", "title": "CYWS bf16"}),
-    ("w8a16", {"file": "cyws_w8a16_mpk.tar.gz", "label": "w8a16 · Faster", "family": "cyws", "title": "CYWS w8a16"}),
+    ("bf16", {"file": "cyws_bf16_mpk.tar.gz", "label": "CYWS bf16 · Most Faithful", "family": "cyws", "title": "CYWS bf16"}),
+    ("w8a16", {"file": "cyws_w8a16_mpk.tar.gz", "label": "CYWS w8a16 · Faster", "family": "cyws", "title": "CYWS w8a16"}),
     ("dinov2-448", {"file": "dinov2_vits14_reg_448_bf16_mpk.tar.gz", "label": "DINOv2 448 · Zero-Shot",
                     "family": "dinov2", "title": "DINOv2 448"}),
 ])
@@ -605,7 +605,7 @@ class Demo:
         for n, e in (self.hub.models() if self.hub else {}).items():
             builtin = MODELS.get(n)
             out[n] = {"file": e["files"][0]["name"], "bytes": e["files"][0]["bytes"],
-                      "label": builtin["label"] if builtin else f"{n} · {e.get('title') or n}",
+                      "label": builtin["label"] if builtin else (e.get("title") or n),
                       "family": builtin["family"] if builtin else e.get("family", "cyws"),
                       "title": builtin["title"] if builtin else (e.get("title") or n)}
         return out
