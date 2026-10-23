@@ -67,12 +67,12 @@ def test_family_interface_and_presets():
     with pytest.raises(CywsError):
         families.get("yolo")
     assert set(dn.presets()) == {"fast", "balanced", "accurate"}
-    assert dn.presets()["fast"] == {"levels": [0], "thr": 0.40}
+    assert dn.presets()["fast"] == {"levels": [0], "thr": 0.30}
     assert dn.presets()["accurate"]["tiles"] == "full" and dn.presets()["accurate"]["thr"] == 0.35
     assert dn.defaults() == {"thr": 0.40, "levels": [0, 1], "register": False, "tiles": "gated",
                              "mask_mode": "box", "verify_change": None}
     cfg = dn.config_from(dn.base_config(), {"preset": "fast"})
-    assert cfg.levels == (0,) and cfg.thr == 0.40
+    assert cfg.levels == (0,) and cfg.thr == 0.30
     cfg = dn.config_from(dn.base_config(), {"preset": "accurate", "levels": "0,1,2", "mask_mode": "diff"})
     assert cfg.levels == (0, 1, 2) and cfg.tiles == "full" and cfg.thr == 0.35
     assert (cfg.radius, cfg.border, cfg.blur, cfg.min_area, cfg.work_long) == (0, 1, 1.0, 0.002, 1024)

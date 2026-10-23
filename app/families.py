@@ -186,7 +186,7 @@ class Dinov2Family(Family):
     ignored = ("mask_mode", "verify_change")
     capabilities = {"per": "image", "pixel_masks": False, "labels": True}
     PRESETS = {
-        "fast": {"levels": [0], "thr": 0.40},
+        "fast": {"levels": [0], "thr": 0.30},          # whole photo only: its own best threshold (tiles need 0.40)
         "balanced": {"levels": [0, 1], "tiles": "gated", "thr": 0.40},
         "accurate": {"levels": [0, 1], "tiles": "full", "thr": 0.35},
     }
