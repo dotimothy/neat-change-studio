@@ -371,3 +371,11 @@ def test_delete_and_verify_commands(tmp_path, monkeypatch, capsys):
     assert "deleted" in capsys.readouterr().out
     args.delete = ["nope"]
     assert server.delete_command(args) == 1
+
+
+def test_side_panel_collapse_is_styled():
+    """The rail toggle only flips a class: without these rules the button does nothing
+    (they were lost once when the sidebar model list was removed)."""
+    css = (Path(server.WEB) / "style.css").read_text()
+    for rule in (".workspace.rail-collapsed .rail {", ".rail-toggle {", ".workspace.rail-collapsed .rail-toggle {"):
+        assert rule in css, rule
