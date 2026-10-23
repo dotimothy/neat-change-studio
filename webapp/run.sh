@@ -86,7 +86,9 @@ done
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stop)
-      pid="$(pgrep -f "[w]ebapp/server.py" || true)"
+      # only this install's server: a python process whose script is $HERE/server.py (not another
+      # app's webapp/server.py, such as Neat DINO Studio's, nor a shell whose command line names it)
+      pid="$(pgrep -f "^[^ ]*python[0-9.]* $HERE/server\.py( |\$)" || true)"
       if [[ -n "$pid" ]]; then
         # shellcheck disable=SC2086
         kill -TERM $pid
