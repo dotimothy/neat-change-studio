@@ -10,12 +10,14 @@ and is added to a collection.
 There is one repository per model family:
     cyws    dotimothy/sima-cyws     CYWS, trained for change detection (two 256x256 windows in)
     dinov2  dotimothy/sima-dinov2   DINOv2 ViT-S/14, used zero-shot (one 448x448 image in)
+    c3po    dotimothy/sima-c3po     C-3PO change segmentation, PCD and ChangeSim checkpoints (two 256x256 images in)
 
     python3 tools/publish_hub.py                              # CYWS: both models, card, list, collection
     python3 tools/publish_hub.py --only w8a16                 # one model (the list keeps the others)
     python3 tools/publish_hub.py --list-only                  # models.json and the card only
     python3 tools/publish_hub.py --family dinov2              # DINOv2 (build in ../DINOv2/build/bf16_448/)
     python3 tools/publish_hub.py --family dinov2 --dry-run out/hub   # write models.json and README.md, upload nothing
+    python3 tools/publish_hub.py --family c3po --dry-run out/hub     # C-3PO (builds in ../C3PO/build/bf16_*_256/)
 
 An upload needs `huggingface_hub` and a login with write access (`hf auth login`); a dry run
 needs neither.
@@ -86,6 +88,42 @@ DINO_CARD = {"model": "DINOv2 ViT-S/14 with registers (Meta)",
              "architecture": "Vision Transformer ViT-S/14 with 4 registers; used zero-shot, no change-detection training",
              "input": "one 448x448 RGB image -> 32x32 patches", "upstream": "facebookresearch/dinov2",
              "license": "Apache-2.0"}
+
+# ---------------------------------------------------------------------------- C-3PO
+C3PO_REPO = "dotimothy/sima-c3po"
+C3PO_UPSTREAM = "https://github.com/DoctorKey/C-3PO"
+C3PO_NOTE = "C-3PO change segmentation (Pattern Recognition 2023), PCD and ChangeSim checkpoints, bf16, one MLA stage. 46.7 ms per pair. MIT."
+# Numbers are from ../C3PO/README.md: Model.benchmark on a Modalix DevKit, and the app's c3po
+# presets on testCYWS with the FP32 ONNX (bf16 agrees with FP32 on 99.98% of mask pixels).
+# The balanced preset (whole photo + gated 0.6 tiles, thr 0.20), like the CYWS and DINOv2
+# headlines; all tiles in `accurate`, whole photo only in `whole_photo`.
+ACC_PCD = {"changes_found": "28 / 47", "pixel_f1": 0.518, "false_alarm_pairs": "2 / 15",
+           "accurate": {"changes_found": "30 / 47", "pixel_f1": 0.554, "false_alarm_pairs": "2 / 15"},
+           "whole_photo": {"changes_found": "26 / 47", "pixel_f1": 0.499, "false_alarm_pairs": "1 / 15"}}
+ACC_CSB = {"changes_found": "19 / 47", "pixel_f1": 0.524, "false_alarm_pairs": "2 / 15",
+           "accurate": {"changes_found": "22 / 47", "pixel_f1": 0.536, "false_alarm_pairs": "2 / 15"},
+           "whole_photo": {"changes_found": "19 / 47", "pixel_f1": 0.524, "false_alarm_pairs": "2 / 15"}}
+C3PO_MODELS = {
+    "c3po-pcd": {
+        "build": "../C3PO/build/bf16_pcd_256/c3po_pcd_256_bf16_mpk.tar.gz", "title": "C-3PO PCD",
+        "precision": "BF16",
+        "about": "Trained on PCD street panoramas: segments what changed between the two photos.",
+        "latency_ms": 46.7,                                  # per before/after pair
+        "input": {"size": 256, "images": 2},
+        "accuracy": ACC_PCD,
+    },
+    "c3po-csb": {
+        "build": "../C3PO/build/bf16_csb_256/c3po_csb_256_bf16_mpk.tar.gz", "title": "C-3PO ChangeSim",
+        "precision": "BF16",
+        "about": "Trained on ChangeSim (simulated indoor factory, binary): segments what changed between the two photos.",
+        "latency_ms": 46.7,
+        "input": {"size": 256, "images": 2},
+        "accuracy": ACC_CSB,
+    },
+}
+C3PO_CARD = {"model": "C-3PO: How to Reduce Change Detection to Semantic Segmentation (Wang et al., Pattern Recognition 2023)",
+             "architecture": "ResNet-18 shared by both photos, MTF (appeared/disappeared/exchanged), MSF over 4 scales, DeepLabV3 head; 44.7M parameters",
+             "input": "before + after, 256x256 RGB each", "upstream": "DoctorKey/C-3PO", "license": "MIT"}
 
 
 def sha256(path: Path) -> str:
@@ -378,10 +416,117 @@ Nothing was retrained. The code that does this, and the change detection on top,
 """
 
 
+def c3po_card(repo: str, models: dict) -> str:
+    def mb(e):
+        return f"{sum(f['bytes'] for f in e['files']) / 1e6:.0f} MB"
+    rows = "\n".join(
+        f"| `{n}/{e['files'][0]['name']}` | {e['precision']} | {e['latency_ms']:g} ms | {e['accuracy']['changes_found']} | "
+        f"{e['accuracy']['pixel_f1']:.3f} | {e['accuracy']['false_alarm_pairs']} | {mb(e)} |"
+        for n, e in models.items())
+    return f"""---
+license: mit
+library_name: sima-neat
+pipeline_tag: image-segmentation
+tags:
+- sima.ai
+- modalix
+- mla
+- edge
+- change-detection
+- c3po
+---
+
+# C-3PO change segmentation, compiled for the SiMa.ai MLSoC Modalix
+
+[C-3PO]({C3PO_UPSTREAM}) ("How to Reduce Change Detection to Semantic Segmentation", Wang et
+al., Pattern Recognition 2023) takes a **before** and an **after** photo and segments what
+changed, pixel by pixel. A ResNet-18 shared by both photos feeds an MTF module that merges their
+features as appeared, disappeared and exchanged; MSF fuses four scales and a DeepLabV3 head
+produces the mask.
+
+These are two of its released checkpoints compiled for the Modalix MLA with SiMa.ai's Model
+Compiler. The whole network is **one MLA stage, with nothing on the CPU**, and one 256x256
+before/after pair takes 46.7 ms on the MLA (bf16, `Model.benchmark`; 24.5 pairs/s at 12.8 W). A
+plain pyneat loop that pushes a pair and pulls its result before the next took about 447 ms per
+pair on the board, so expect more than the MLA time end to end.
+
+| file | precision | MLA latency per pair | changes found | pixel F1 | false-alarm pairs | size |
+|---|---|---|---|---|---|---|
+{rows}
+
+- **Latency:** `Model.benchmark` on a Modalix DevKit, plugins included.
+- **Changes found, pixel F1, false alarms:** [Neat Change Studio]({APP})'s balanced preset
+  (whole photo plus the 0.6 tiles where it saw a change; with all tiles, the accurate preset,
+  PCD finds 30 / 47 and ChangeSim 22 / 47) on testCYWS: 28 before/after pairs of phone photos, with 47
+  annotated changes and 15 pairs where nothing changed, scored with FP32 (bf16 agrees with
+  FP32 on 99.98% of mask pixels). Neither checkpoint was trained on photos like these; CYWS
+  ([sima-cyws](https://huggingface.co/dotimothy/sima-cyws)) finds 33 / 47 with F1 0.587.
+- The checkpoints are binary (change / no change): boxes are not labelled appeared or
+  disappeared.
+
+## Input and output
+
+- **Inputs:** `in0_before` and `in1_after`, each float32 256x256x3, HWC, RGB, pixel / 255. The
+  ImageNet mean/std is inside the model.
+- **Output:** float32 logits `(1, 2, 64, 64)`, class 0 = no change; the runtime may hand them
+  back channels last, `(64, 64, 2)`. Change probability = 1 - softmax(logits)[0], upsampled
+  bilinearly to the photo.
+
+## Using them
+
+On a Modalix board, use [Neat Change Studio]({APP}):
+
+```bash
+webapp/run.sh --fetch c3po-pcd    # or c3po-csb: downloaded into the models folder and checked
+```
+
+Without the app:
+
+```python
+import numpy as np, pyneat
+
+opt = pyneat.ModelOptions()
+opt.preprocess.kind = pyneat.InputKind.Tensor               # raw tensors in, no image preprocessing
+model = pyneat.Model("c3po-pcd/c3po_pcd_256_bf16_mpk.tar.gz", opt)
+
+def tensor(hwc):
+    t = pyneat.Tensor.from_numpy(np.ascontiguousarray(hwc, np.float32), copy=True)
+    t.layout = pyneat.TensorLayout.HWC
+    return t
+
+before = after = np.zeros((256, 256, 3), np.float32)        # your two photos: RGB / 255, HWC
+run = model.build([tensor(before), tensor(after)])
+run.push_tensors([tensor(before), tensor(after)])
+sample = run.pull(10000)
+t = sample.tensors[0] if sample.tensors else sample.tensor
+y = np.array(t.to_numpy(), np.float32, copy=True).reshape(64, 64, 2)
+change = 1 / (1 + np.exp(y[..., 0] - y[..., 1]))            # P(change), 64x64
+run.close()
+```
+
+## License and attribution
+
+**MIT.** C-3PO, its code and pretrained weights, is by Guo-Hua Wang et al. ({C3PO_UPSTREAM}),
+under the MIT License. These files are derived from those weights and are MIT too: the
+network is rewritten to compile for the MLA with the same function, and compiled in bf16.
+Nothing was retrained.
+
+```bibtex
+@article{{wang2023c3po,
+  title   = {{How to Reduce Change Detection to Semantic Segmentation}},
+  author  = {{Wang, Guo-Hua and Gao, Bin-Bin and Wang, Chengjie}},
+  journal = {{Pattern Recognition}},
+  year    = {{2023}}
+}}
+```
+"""
+
+
 # One repository per family: what it holds, its model card and its note in the collection.
 FAMILIES = {
     "cyws": {"repo": REPO, "models": MODELS, "card": CARD, "readme": cyws_card, "note": NOTE},
     "dinov2": {"repo": DINO_REPO, "models": DINO_MODELS, "card": DINO_CARD, "readme": dinov2_card, "note": DINO_NOTE},
+    "c3po": {"repo": C3PO_REPO, "models": C3PO_MODELS, "card": C3PO_CARD, "readme": c3po_card, "note": C3PO_NOTE},
 }
 
 

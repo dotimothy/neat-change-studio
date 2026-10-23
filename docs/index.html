@@ -83,7 +83,7 @@
       <h1 class="hero-title" id="hero-title">See What Changed</h1>
     </div>
     <p class="hero-powered">Powered by <strong>Neat</strong> · <strong>Modalix MLA</strong></p>
-    <p class="hero-sub">Give it a before photo and an after photo of the same scene. It draws boxes around what appeared, disappeared or changed, on the SiMa.ai Modalix MLA. The model is CYWS (The Change You Want to See, WACV 2023), or DINOv2 used zero-shot, each compiled to one MLA ELF and run through NEAT.</p>
+    <p class="hero-sub">Give it a before photo and an after photo of the same scene. It draws boxes around what appeared, disappeared or changed, on the SiMa.ai Modalix MLA. The model is CYWS (The Change You Want to See, WACV 2023), DINOv2 used zero-shot, or C-3PO change segmentation, each compiled to one MLA ELF and run through NEAT.</p>
     <div class="cta-row">
       <a class="btn spectrum" href="https://github.com/dotimothy/neat-change-studio"><svg class="ic" aria-hidden="true" style="stroke:currentColor;fill:none"><use href="#i-code"/></svg>Get the Code</a>
       <a class="btn" href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download the Models</a>
@@ -348,6 +348,23 @@
         </table>
       </div>
       <p class="tbl-note">The settings of both models were tuned on these same 28 pairs, so the numbers are optimistic for new scenes. On the board, DINOv2's features match PyTorch FP32 to a patch cosine of 0.994 (0.997 centred).</p>
+    </div>
+
+    <div class="card table-card" style="margin-top:16px">
+      <div class="tc-head"><h3 class="card-title" id="tbl-c3po">A Third Model: C-3PO, Change Segmentation</h3>
+        <p><a href="https://github.com/DoctorKey/C-3PO">C-3PO</a> (Wang et al., Pattern Recognition 2023; MIT) segments what changed between a before and an after image, 256×256 each: a ResNet-18 shared by both photos, an MTF module that merges them as appeared, disappeared and exchanged, MSF over four scales and a DeepLabV3 head. It compiles to one MLA ELF with no A65 stage and runs in 46.7 ms per pair (24.5 pairs/s, 12.8 W). Two released checkpoints are compiled: PCD (street panoramas) and ChangeSim binary (a simulated indoor factory). They are binary, so every box is labelled changed.</p></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tbl-c3po">
+        <table class="fit-sm" aria-labelledby="tbl-c3po">
+          <thead><tr><th scope="col">testCYWS (FP32, threshold 0.20)</th><th scope="col" class="num">Found</th><th scope="col" class="num">Pixel F1</th><th scope="col" class="num">False-Alarm Pairs (of 15)</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">C-3PO PCD, whole photo (Fast)</th><td class="num" data-label="Found">26/47</td><td class="num" data-label="Pixel F1">0.499</td><td class="num" data-label="False-Alarm Pairs (of 15)">1</td></tr>
+            <tr class="hl"><th scope="row">C-3PO PCD, + all 0.6 tiles (Accurate)</th><td class="num" data-label="Found">30/47</td><td class="num" data-label="Pixel F1"><strong>0.554</strong></td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td></tr>
+            <tr><th scope="row">C-3PO ChangeSim, whole photo (Fast)</th><td class="num" data-label="Found">19/47</td><td class="num" data-label="Pixel F1">0.524</td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td></tr>
+            <tr><th scope="row">C-3PO ChangeSim, + all 0.6 tiles (Accurate)</th><td class="num" data-label="Found">22/47</td><td class="num" data-label="Pixel F1">0.536</td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tbl-note">Neither checkpoint was trained on photos like these, and C-3PO is behind CYWS and DINOv2 here. The threshold was tuned on these same pairs with ONNX Runtime FP32 on a PC (bf16 agrees with FP32 on 99.98% of mask pixels); the 46.7 ms is <code>Model.benchmark</code>'s, while a plain pyneat push → pull loop on the board took about 447 ms per pair, and the studio's own time on the board is still to be measured.</p>
     </div>
 
     <div class="card table-card" style="margin-top:16px">
@@ -636,8 +653,8 @@
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow">Models</p>
-      <h2 id="models-title">Three Compiled Models on Hugging Face</h2>
-      <p class="lead">All three are single-ELF MPKs for the Modalix MLA: the two CYWS builds in <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a> and DINOv2 in <a href="https://huggingface.co/dotimothy/sima-dinov2">dotimothy/sima-dinov2</a>, both in the collection <a href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b">SiMa.ai Change Detection Models</a>. Download them from the web demo's <strong>Models</strong> window, with <code>./setup.sh</code>, or with <code>neat-change --fetch bf16</code> (or <code>w8a16</code>, <code>dinov2-448</code>). They go to one models directory, <code>/media/nvme/models/cyws</code>, shared by every install and kept across updates; <code>./setup.sh --models-dir DIR</code> moves it.</p>
+      <h2 id="models-title">Compiled Models</h2>
+      <p class="lead">Every model is a single-ELF MPK for the Modalix MLA: the two CYWS builds in <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a> and DINOv2 in <a href="https://huggingface.co/dotimothy/sima-dinov2">dotimothy/sima-dinov2</a>, both in the collection <a href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b">SiMa.ai Change Detection Models</a>. Download them from the web demo's <strong>Models</strong> window, with <code>./setup.sh</code>, or with <code>neat-change --fetch bf16</code> (or <code>w8a16</code>, <code>dinov2-448</code>). They go to one models directory, <code>/media/nvme/models/cyws</code>, shared by every install and kept across updates; <code>./setup.sh --models-dir DIR</code> moves it. The two C-3PO models are not on Hugging Face: copy their MPKs into that directory, or compile them with the C-3PO port.</p>
     </div>
 
     <div class="grid grid-3">
@@ -682,8 +699,22 @@
           <a class="btn sm" href="https://huggingface.co/dotimothy/sima-dinov2"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Get dinov2-448</a>
         </div>
       </article>
+
+      <article class="card model-card">
+        <div class="mc-head"><span class="mc-name">c3po-pcd · c3po-csb</span><span class="mc-prec">BF16</span><span class="badge alt">Segmentation</span></div>
+        <p class="mc-desc">C-3PO with its PCD (street) and ChangeSim (simulated indoor) checkpoints. Change or no change per pixel, so every box is labelled changed.</p>
+        <dl class="kv">
+          <div><dt>Latency</dt><dd>46.7 <small>ms / pair</small></dd></div>
+          <div><dt>Mask vs FP32</dt><dd>99.98%</dd></div>
+          <div><dt>testCYWS Found</dt><dd>28/47 <small>F1 0.518 (PCD)</small></dd></div>
+          <div><dt>Size</dt><dd>166–167 <small>MB each</small></dd></div>
+        </dl>
+        <div class="mc-foot">
+          <a class="btn sm" href="https://github.com/DoctorKey/C-3PO"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Upstream C-3PO</a>
+        </div>
+      </article>
     </div>
-    <p class="small" style="margin-top:14px">Latency is <code>Model.benchmark</code>. testCYWS numbers use the balanced preset, and the settings of both families were tuned on those same pairs, so they are optimistic for new scenes. The CYWS models take <code>in0_before</code> and <code>in1_after</code> (float32 256×256×3 HWC, RGB, pixel / 255) and return one fused <code>(10, 256, 256)</code> output. DINOv2 takes one float32 448×448×3 image (RGB / 255) and returns <code>(1, 384, 1, 1029)</code>: a class token, 4 registers and 32×32 patch features; a pair is two images per window.</p>
+    <p class="small" style="margin-top:14px">Latency is <code>Model.benchmark</code>. testCYWS numbers use the balanced preset, and the settings of every family were tuned on those same pairs, so they are optimistic for new scenes. The CYWS models take <code>in0_before</code> and <code>in1_after</code> (float32 256×256×3 HWC, RGB, pixel / 255) and return one fused <code>(10, 256, 256)</code> output. DINOv2 takes one float32 448×448×3 image (RGB / 255) and returns <code>(1, 384, 1, 1029)</code>: a class token, 4 registers and 32×32 patch features; a pair is two images per window. C-3PO takes <code>in0_before</code> and <code>in1_after</code> (float32 256×256×3 HWC, RGB / 255) and returns logits <code>(1, 2, 64, 64)</code>; its testCYWS numbers are FP32. A plain pyneat push → pull loop on the board took about 447 ms per C-3PO pair, against 46.7 ms from <code>Model.benchmark</code>.</p>
   </div>
 </section>
 
@@ -701,6 +732,7 @@
           <li>The code is under the Apache License 2.0 (<a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/LICENSE">LICENSE</a>, <a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/NOTICE">NOTICE</a>).</li>
           <li>CYWS is by Ragav Sachdeva and Andrew Zisserman (<a href="https://github.com/ragavsachdeva/The-Change-You-Want-to-See">The Change You Want to See</a>, WACV 2023). Its authors have confirmed that CYWS, its code and pretrained weights, is released under the Apache License 2.0; see NOTICE. The compiled models are derived from those weights and are also Apache-2.0.</li>
           <li>DINOv2, its code and pretrained weights, is by Meta Platforms, Inc. (<a href="https://github.com/facebookresearch/dinov2">facebookresearch/dinov2</a>), under the Apache License 2.0. The compiled DINOv2 model is derived from those weights and is also Apache-2.0.</li>
+          <li>C-3PO, its code and pretrained weights, is by Guo-Hua Wang et al. (<a href="https://github.com/DoctorKey/C-3PO">DoctorKey/C-3PO</a>), under the MIT License. The compiled C-3PO models are derived from those weights and are also MIT.</li>
           <li>Inter and JetBrains Mono are under the SIL Open Font License 1.1 (<a href="assets/fonts/OFL-Inter.txt">Inter</a>, <a href="assets/fonts/OFL-JetBrainsMono.txt">JetBrains Mono</a>).</li>
           <li>SiMa.ai, Modalix, Neat and the SiMa.ai and Neat logos are trademarks of SiMa.ai and are not covered by the Apache License.</li>
         </ul>
@@ -710,11 +742,12 @@
           <a class="btn sm" href="https://github.com/dotimothy/neat-decision-studio"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Neat Decision Studio</a>
           <a class="btn sm" href="https://github.com/ragavsachdeva/The-Change-You-Want-to-See"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Upstream CYWS</a>
           <a class="btn sm" href="https://github.com/facebookresearch/dinov2"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Upstream DINOv2</a>
+          <a class="btn sm" href="https://github.com/DoctorKey/C-3PO"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Upstream C-3PO</a>
         </div>
       </div>
       <div class="card">
         <h3 class="card-title">Citation</h3>
-        <p class="small">If you use CYWS, please cite the paper. For the DINOv2 model, cite <a href="https://github.com/facebookresearch/dinov2">DINOv2</a> (Oquab et al., TMLR 2024).</p>
+        <p class="small">If you use CYWS, please cite the paper. For the DINOv2 model, cite <a href="https://github.com/facebookresearch/dinov2">DINOv2</a> (Oquab et al., TMLR 2024); for C-3PO, <a href="https://github.com/DoctorKey/C-3PO">C-3PO</a> (Wang et al., Pattern Recognition 2023).</p>
         <div class="code">
           <div class="code-head"><span class="where"><i></i>BibTeX</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> BibTeX</span></button></div>
 <pre class="wrap-pre"><code>@inproceedings{sachdeva2023change,

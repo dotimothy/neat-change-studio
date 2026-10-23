@@ -68,8 +68,31 @@
               input: "One 448×448 image → 32×32 patches; run on each photo and its tiles",
               upstream: "facebookresearch/dinov2", license: "Apache-2.0 (Meta)" },
     },
+    "c3po-pcd": {
+      title: "C-3PO PCD", family: "c3po", precision: "BF16", latency_ms: 46.7,
+      file: "c3po_pcd_256_bf16_mpk.tar.gz", bytes: 166260609,
+      about: "Trained change segmentation, on PCD street panoramas. Marks what changed, without telling appeared from gone.",
+      speed: "46.7 ms per 256×256 pair on the MLA (Model.benchmark), 24.5 pairs/s, 12.8 W; a plain pyneat push → pull loop took about 447 ms per pair",
+      accuracy: { changes_found: "28 / 47", pixel_f1: 0.518, false_alarm_pairs: "2 / 15" },
+      accuracy_note: "Balanced preset (gated 0.6 tiles), FP32. Accurate (all tiles): 30 / 47 found, F1 0.554. Whole photo: 26 / 47 found, F1 0.499, 1 / 15 false-alarm pairs. Trained on street scenes, not photos like these; thresholds tuned on the same pairs.",
+      card: { architecture: "C-3PO (How to Reduce Change Detection to Semantic Segmentation, Pattern Recognition 2023): ResNet-18 shared by both photos, MTF, MSF over 4 scales, DeepLabV3 head; 44.7M parameters; one MLA ELF",
+              input: "Before + after, 256×256 RGB each → change probability at 64×64; run on the whole photo and its tiles",
+              upstream: "DoctorKey/C-3PO", license: "MIT" },
+    },
+    "c3po-csb": {
+      title: "C-3PO ChangeSim", family: "c3po", precision: "BF16", latency_ms: 46.7,
+      file: "c3po_csb_256_bf16_mpk.tar.gz", bytes: 166573893,
+      about: "Trained change segmentation, on ChangeSim (a simulated indoor factory). Marks what changed, without telling appeared from gone.",
+      speed: "46.7 ms per 256×256 pair on the MLA (Model.benchmark), 24.5 pairs/s, 12.8 W; a plain pyneat push → pull loop took about 447 ms per pair",
+      accuracy: { changes_found: "19 / 47", pixel_f1: 0.524, false_alarm_pairs: "2 / 15" },
+      accuracy_note: "Balanced preset (gated 0.6 tiles), FP32. Accurate (all tiles): 22 / 47 found, F1 0.536. Whole photo: 19 / 47 found, F1 0.524, 2 / 15 false-alarm pairs. Trained on simulated indoor scenes, not photos like these; thresholds tuned on the same pairs.",
+      card: { architecture: "C-3PO (How to Reduce Change Detection to Semantic Segmentation, Pattern Recognition 2023): ResNet-18 shared by both photos, MTF, MSF over 4 scales, DeepLabV3 head; 44.7M parameters; one MLA ELF",
+              input: "Before + after, 256×256 RGB each → change probability at 64×64; run on the whole photo and its tiles",
+              upstream: "DoctorKey/C-3PO", license: "MIT" },
+    },
   };
-  const FAMILY = { cyws: { pill: "Trained", per: "Window", title: "CYWS" }, dinov2: { pill: "Zero-Shot", per: "Image", title: "DINOv2" } };
+  const FAMILY = { cyws: { pill: "Trained", per: "Window", title: "CYWS" }, dinov2: { pill: "Zero-Shot", per: "Image", title: "DINOv2" },
+    c3po: { pill: "Trained", per: "Pair", title: "C-3PO" } };
   const PRECISION = { BF16: "bfloat16 weights and activations", A_BF16_W_INT8: "int8 weights, bfloat16 activations" };
   const PREC_CHIP = { BF16: "bf16", A_BF16_W_INT8: "w8a16" };
   const GITHUB = "https://github.com/dotimothy/neat-change-studio";
@@ -365,7 +388,8 @@
     const pills = [];
     const pill = (text, cls = "", t = null) => pills.push(el("span", { className: `mmgr-pill ${cls}`, textContent: text, title: t }));
     pill(FAMILY[fam] ? FAMILY[fam].pill : fam, fam === "dinov2" ? "zs" : "trained",
-      fam === "dinov2" ? "No change-detection training: compares the photos' DINOv2 features" : "Trained for change detection");
+      fam === "dinov2" ? "No change-detection training: compares the photos' DINOv2 features"
+        : fam === "c3po" ? "Trained for change segmentation: change or no change per pixel" : "Trained for change detection");
     if (loadingThis) pill("Loading…", "warn");
     else if (isActive) pill("Loaded", "ok");
     else if (damaged) pill("Damaged", "warn", "The file doesn't match the published one");
@@ -547,7 +571,7 @@
         el("dt", { textContent: "Models Folder" }), dd(hub && hub.directory ? el("code", { textContent: hub.directory }) : "unknown"),
         el("dt", { textContent: "Hugging Face" }), dd(...(rs.length ? rs.flatMap((r, i) => [i ? ", " : "", link(r.page || `https://huggingface.co/${r.repo}`, r.repo)]) : ["None"])),
         el("dt", { textContent: "Source" }), dd(link(GITHUB, "github.com/dotimothy/neat-change-studio")),
-        el("dt", { textContent: "Models Used" }), dd("CYWS (Sachdeva & Zisserman, WACV 2023) and DINOv2 (Meta), both Apache-2.0")));
+        el("dt", { textContent: "Models Used" }), dd("CYWS (Sachdeva & Zisserman, WACV 2023) and DINOv2 (Meta), both Apache-2.0; C-3PO (Wang et al., Pattern Recognition 2023), MIT")));
 
     for (const id of openCards) { const d = id && document.getElementById(id); if (d) { const det = d.querySelector("details"); if (det) det.open = true; } }
     for (const [k, p] of Object.entries(panels)) p.scrollTop = scroll[k];

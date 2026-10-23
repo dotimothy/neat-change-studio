@@ -9,13 +9,15 @@ One object per family, with the same small interface:
     load(item, cfg) -> Pair                    process(backend, pair, cfg) -> common.Result
 
 `cyws` wraps the CYWS app as it is (CywsApp, AppConfig, PRESETS, the CYWS backends);
-`dinov2` is the zero-shot DINOv2 model (zeroshot.py, feature_backends.py). Nothing here
+`dinov2` is the zero-shot DINOv2 model (zeroshot.py, feature_backends.py); `c3po` is C-3PO, a
+change segmentation model (c3po_app.py, c3po_backends.py). Nothing here
 imports pyneat; the neat backends import it when they are built.
 """
 from __future__ import annotations
 
 import dataclasses
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +41,14 @@ CYWS_OPTION_SPEC = {
 }
 DINOV2_OPTION_SPEC = {
     "thr": (float, 0.10, 0.90),
+    "levels": (str, ("0", "0,1", "0,1,2")),
+    "register": (bool,),
+    "tiles": (str, ("full", "gated")),
+    "mask_mode": (str, ("box", "diff")),       # accepted and ignored: the mask is per pixel
+    "verify_change": (bool,),                  # accepted and ignored
+}
+C3PO_OPTION_SPEC = {
+    "thr": (float, 0.05, 0.90),
     "levels": (str, ("0", "0,1", "0,1,2")),
     "register": (bool,),
     "tiles": (str, ("full", "gated")),
@@ -234,7 +244,87 @@ class Dinov2Family(Family):
         return ZeroShotApp(backend, cfg).process(pair)
 
 
-FAMILIES: dict[str, Family] = {f.name: f for f in (CywsFamily(), Dinov2Family())}
+class C3POFamily(Family):
+    """C-3PO (trained change segmentation): a before and an after image, 256 x 256 each, in;
+    change logits at 64 x 64 out. Binary checkpoints, so every box is "changed"."""
+
+    name, title = "c3po", "C-3PO"
+    option_spec = C3PO_OPTION_SPEC
+    ignored = ("mask_mode", "verify_change")
+    capabilities = {"per": "pair", "pixel_masks": False, "labels": False}
+    # tuned on testCYWS with the FP32 ONNX; one threshold suits both checkpoints (see c3po_app.py)
+    PRESETS = {
+        "fast": {"levels": [0], "thr": 0.20},          # whole photo only: one pair on the MLA
+        "balanced": {"levels": [0, 1], "tiles": "gated", "thr": 0.20},
+        "accurate": {"levels": [0, 1], "tiles": "full", "thr": 0.20},
+    }
+    CHECKPOINTS = ("pcd", "csb")
+
+    def presets(self) -> dict:
+        return {k: dict(v) for k, v in self.PRESETS.items()}
+
+    def base_config(self):
+        from c3po_app import C3POConfig
+        return C3POConfig()
+
+    def config_from(self, base, opts: dict):
+        cfg, upd = apply_options(base, self.option_spec, opts, self.presets())
+        return dataclasses.replace(cfg, **upd)
+
+    @classmethod
+    def checkpoint(cls, path: str | Path) -> str | None:
+        """Which checkpoint an MPK or ONNX file holds, from its name (c3po_<ckpt>_256..., the
+        token set off by any non-alphanumeric separator); None when the name does not say."""
+        name = Path(path).name.lower()
+        found = [c for c in cls.CHECKPOINTS if re.search(rf"(?<![a-z0-9]){c}(?![a-z0-9])", name)]
+        return found[0] if len(found) == 1 else None
+
+    @staticmethod
+    def onnx_path(mpk: str | Path = "", onnx: str = "") -> Path:
+        """A C-3PO ONNX for --backend onnx: C3PO_ONNX, --onnx when it is a C-3PO file, else
+        build/onnx here, else the C3PO repository's build/onnx (C3PO_DIR, default ../C3PO),
+        for the checkpoint the model's file name says."""
+        env = os.environ.get("C3PO_ONNX", "").strip()
+        if env:
+            return Path(env)
+        if onnx and "c3po" in Path(onnx).name:
+            return Path(onnx)
+        ckpt = C3POFamily.checkpoint(mpk)
+        if ckpt is None:
+            raise CywsError(f"can't tell which C-3PO checkpoint ({' or '.join(C3POFamily.CHECKPOINTS)}) "
+                            f"{Path(mpk).name or 'this model'} holds from its name; pass --onnx "
+                            f"c3po_<checkpoint>_256.onnx or set C3PO_ONNX")
+        file = f"c3po_{ckpt}_256.onnx"
+        here = ROOT / "build/onnx" / file
+        if here.is_file():
+            return here
+        repo = Path(os.environ.get("C3PO_DIR", "").strip() or ROOT.parent / "C3PO")
+        return repo / "build/onnx" / file
+
+    def open(self, path: str | Path, backend_kind: str, onnx: str = "") -> Any:
+        import c3po_backends as cb
+        if backend_kind == "neat":
+            return cb.NeatC3POBackend(path)
+        if backend_kind == "fake":
+            return cb.FakeC3POBackend()
+        if backend_kind == "onnx":
+            return cb.OnnxC3POBackend(self.onnx_path(path, onnx))
+        raise CywsError(f"unknown backend {backend_kind!r} for C-3PO")
+
+    def warm(self, backend: Any) -> None:
+        z = np.zeros((backend.size, backend.size, 3), np.float32)
+        backend.infer(z, z)
+
+    def load(self, item: PairItem, cfg) -> Pair:
+        from c3po_app import C3POApp
+        return C3POApp(None, cfg).load(item)
+
+    def process(self, backend: Any, pair: Pair, cfg) -> Result:
+        from c3po_app import C3POApp
+        return C3POApp(backend, cfg).process(pair)
+
+
+FAMILIES: dict[str, Family] = {f.name: f for f in (CywsFamily(), Dinov2Family(), C3POFamily())}
 
 
 def get(name: str) -> Family:

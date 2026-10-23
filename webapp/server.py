@@ -3,10 +3,11 @@
 
 Pick a before/after pair from the test set (or upload your own two photos); the
 loaded model runs on the MLA through pyneat via the app in ../app: CYWS (trained,
-per 256x256 window pair) or DINOv2 (zero-shot, per 448x448 image; app/families.py
-says how each family loads and runs). The page shows the detected changes on the "after" image together
-with the heat map, the change mask, the ground truth (when the pair has one),
-per-stage timings and accuracy against the ground truth.
+per 256x256 window pair), DINOv2 (zero-shot, per 448x448 image) or C-3PO (trained
+change segmentation, per 256x256 pair); app/families.py says how each family loads
+and runs. The page shows the detected changes on the "after" image together with
+the heat map, the change mask, the ground truth (when the pair has one), per-stage
+timings and accuracy against the ground truth.
 
     python3 webapp/server.py [--port 8098] [--model bf16] [--data data/testCYWS]
 
@@ -67,6 +68,10 @@ MODELS = OrderedDict([
     ("w8a16", {"file": "cyws_w8a16_mpk.tar.gz", "label": "CYWS w8a16 · Faster", "family": "cyws", "title": "CYWS w8a16"}),
     ("dinov2-448", {"file": "dinov2_vits14_reg_448_bf16_mpk.tar.gz", "label": "DINOv2 448 · Zero-Shot",
                     "family": "dinov2", "title": "DINOv2 448"}),
+    ("c3po-pcd", {"file": "c3po_pcd_256_bf16_mpk.tar.gz", "label": "C-3PO PCD · Street-Trained",
+                  "family": "c3po", "title": "C-3PO PCD", "hub": False}),
+    ("c3po-csb", {"file": "c3po_csb_256_bf16_mpk.tar.gz", "label": "C-3PO ChangeSim · Indoor-Trained",
+                  "family": "c3po", "title": "C-3PO ChangeSim", "hub": False}),
 ])
 
 
@@ -203,7 +208,8 @@ class Hub:
     NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")
     FILE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,80}\.tar\.gz")
     SPARE = 1 << 30                                 # disk left free after a download
-    FAMILIES = ("cyws", "dinov2")
+    FAMILIES = ("cyws", "dinov2", "c3po")
+    IMAGES = {"cyws": 2, "dinov2": 1, "c3po": 2}       # images per model input
 
     def __init__(self, repo, models_dir: Path, loaded, catalog):
         self.repos = parse_repos(repo)
@@ -250,9 +256,9 @@ class Hub:
             size, images = inp.get("size"), inp.get("images")
             if size is not None and (not isinstance(size, int) or isinstance(size, bool)
                                      or (family == "dinov2" and (size < 14 or size % 14))
-                                     or (family == "cyws" and size != 256)):
+                                     or (family in ("cyws", "c3po") and size != 256)):
                 return None, f"input size {size!r} does not fit a {family} model"
-            if images is not None and images != (1 if family == "dinov2" else 2):
+            if images is not None and images != cls.IMAGES[family]:
                 return None, f"a {family} model does not take {images!r} images"
         card = e.get("card")
         if card is not None and not isinstance(card, dict):
@@ -650,7 +656,12 @@ class Demo:
         path = self.models_dir / catalog[name]["file"]
         if not path.exists():
             title = catalog[name].get("title") or name
-            err = CywsError(f"{title} is not on this board yet. Download it in Models.")
+            listed = name in (self.hub.models() if self.hub is not None else {})
+            if MODELS.get(name, {}).get("hub", True) or listed:
+                err = CywsError(f"{title} is not on this board yet. Download it in Models.")
+            else:                               # not on Hugging Face (C-3PO): nothing to download
+                err = CywsError(f"{title} is not on this board yet. Copy {catalog[name]['file']} "
+                                f"into {self.models_dir}.")
             if self.backend is None:            # nothing loaded: say so instead of "starting" forever
                 self.state, self.error = "idle", str(err)
             raise err
@@ -1043,14 +1054,16 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8098)
     ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--model", default="bf16", choices=list(MODELS))
+    ap.add_argument("--model", default="bf16", choices=list(MODELS),
+                    help="model to load at start: " + ", ".join(MODELS) + " (default bf16)")
     ap.add_argument("--models", default=str(default_models_dir()),
                     help="the models directory (default: CYWS_MODELS_DIR, .models-dir, /media/nvme/models/cyws, or models/)")
     ap.add_argument("--data", default=os.environ.get("CYWS_DATA") or str(ROOT / "data/testCYWS"))
     ap.add_argument("--cache", default=str(ROOT / "webapp/cache"))
     ap.add_argument("--uploads", default=str(ROOT / "webapp/uploads"))
     ap.add_argument("--backend", default="neat", choices=["neat", "onnx", "fake"],
-                    help="neat on the board; onnx/fake for trying the page on a PC")
+                    help="neat on the board; onnx/fake for trying the page on a PC (onnx: DINOV2_ONNX and "
+                         "C3PO_ONNX pick those families' ONNX files)")
     ap.add_argument("--onnx", default=str(ROOT / "build/onnx/cyws_fused.onnx"))
     ap.add_argument("--hub-repo", default=",".join(HUB_REPOS),
                     help="Hugging Face repositories whose models.json lists downloadable models, "

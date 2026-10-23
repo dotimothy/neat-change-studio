@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Start the Neat Change Studio web demo on the DevKit (CYWS and DINOv2 models).
+# Start the Neat Change Studio web demo on the DevKit (CYWS, DINOv2 and C-3PO models).
 # Extra arguments go to webapp/server.py:
 #   webapp/run.sh                  # http(s)://<board>:8098/, bf16 model (open https:// for the webcam)
-#   webapp/run.sh --model w8a16    # start with the faster build (or dinov2-448, zero-shot DINOv2)
+#   webapp/run.sh --model w8a16    # start with the faster build (or dinov2-448, zero-shot DINOv2,
+#                                  # or c3po-pcd / c3po-csb, C-3PO: copy its MPK into the models folder)
 #   webapp/run.sh --port 9000
 #   webapp/run.sh --stop           # stop a running instance
 #   webapp/run.sh --daemon         # start detached, log to webapp/server.log
@@ -120,7 +121,8 @@ done
 
 title_of() {   # a model's name as the app shows it
   case "$1" in
-    bf16) echo "CYWS bf16" ;; w8a16) echo "CYWS w8a16" ;; dinov2-448) echo "DINOv2 448" ;; *) echo "$1" ;;
+    bf16) echo "CYWS bf16" ;; w8a16) echo "CYWS w8a16" ;; dinov2-448) echo "DINOv2 448" ;;
+    c3po-pcd) echo "C-3PO PCD" ;; c3po-csb) echo "C-3PO ChangeSim" ;; *) echo "$1" ;;
   esac
 }
 status_json() { curl -fsS --max-time 1 "http://localhost:${PORT}/api/status" 2>/dev/null; }
@@ -169,7 +171,9 @@ for f in "$MODELS_DIR"/*_mpk.tar.gz; do
   [[ -e "$f" ]] || continue
   case "$(basename "$f")" in
     cyws_bf16_mpk.tar.gz) have+=("CYWS bf16") ;; cyws_w8a16_mpk.tar.gz) have+=("CYWS w8a16") ;;
-    dinov2_vits14_reg_448_bf16_mpk.tar.gz) have+=("DINOv2 448") ;; *) have+=("$(basename "$f" _mpk.tar.gz)") ;;
+    dinov2_vits14_reg_448_bf16_mpk.tar.gz) have+=("DINOv2 448") ;;
+    c3po_pcd_256_bf16_mpk.tar.gz) have+=("C-3PO PCD") ;; c3po_csb_256_bf16_mpk.tar.gz) have+=("C-3PO ChangeSim") ;;
+    *) have+=("$(basename "$f" _mpk.tar.gz)") ;;
   esac
 done
 kv "models" "$( ((${#have[@]})) && { IFS='|'; printf '%s' "${have[*]}" | sed 's/|/ · /g'; } || echo "none yet (download one in Models, or: neat-change --fetch bf16)")"
@@ -220,7 +224,8 @@ follow_load() {   # follow_load <server pid>
                  ok "${C_BOLD}${title}${C_RESET} is ready on the MLA ($((SECONDS - t0)) s)"; return 0 ;;
         idle:*)  ((daemon && TERM_FANCY)) && printf '\r\033[K'
                  warn "Running with no model loaded: ${err:-none is on this board}"
-                 info "Download one in the Models window, or: neat-change --fetch bf16"; return 0 ;;
+                 if [[ "$err" == *"Copy "* ]]; then info "It is not on Hugging Face: copy its MPK into the models folder"
+                 else info "Download one in the Models window, or: neat-change --fetch bf16"; fi; return 0 ;;
         error:*) ((daemon && TERM_FANCY)) && printf '\r\033[K'
                  errln "${err:-The model did not load}"; return 1 ;;
         *:release) msg="Releasing the MLA" ;;

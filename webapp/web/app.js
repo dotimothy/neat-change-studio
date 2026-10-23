@@ -153,9 +153,23 @@ function openModels(tab = "models", model = null) {
   if (mm) mm.open(tab, model);
   else toast("The Models window didn't load. Reload the page.", "error");
 }
-const FAMILY_PILL = { cyws: "Trained", dinov2: "Zero-Shot" };
+const FAMILY_PILL = { cyws: "Trained", dinov2: "Zero-Shot", c3po: "Trained" };
 const caps = () => (state.status && state.status.capabilities) || { per: "window", pixel_masks: true, labels: true };
-const perWord = () => (caps().per === "image" ? "Image" : "Window");
+const PER_WORD = { image: "Image", pair: "Pair", window: "Window" };
+const perWord = () => PER_WORD[caps().per] || "Window";
+/* A result's family capabilities (the model may have changed since it ran). */
+function resultCaps(r) {
+  const f = state.status && state.status.families && state.status.families[resultFamily(r)];
+  return (f && f.capabilities) || caps();
+}
+/* Labels a family can give: binary models (C-3PO) only say "changed". */
+const labelsOf = (c) => (c && c.labels === false ? ["changed"] : LABELS);
+function showLabelCaps(c) {
+  const on = !c || c.labels !== false;
+  for (const k of ["appeared", "disappeared"]) {
+    $$(`.fc.${k}, .legend .sw.${k}`).forEach((el) => { (el.closest(".legend") ? el.parentElement : el).hidden = !on; });
+  }
+}
 const modelRow = (s, name) => ((s && s.models) || []).find((x) => x.name === name) || null;
 const modelTitle = (s, name) => { const m = modelRow(s, name); return (m && (m.title || m.label)) || name || ""; };
 
@@ -252,7 +266,8 @@ function renderStatus(s) {
   $("#chip-model").textContent = s && s.model && st === "ready" ? title : "";
   // per window (CYWS) or per image (DINOv2)
   $("#m-mla-label").textContent = `Per ${perWord()}`;
-  $("#mi-mla").title = caps().per === "image" ? "Mean MLA latency per image" : "Mean MLA latency per 256×256 window";
+  $("#mi-mla").title = caps().per === "image" ? "Mean MLA latency per image"
+    : caps().per === "pair" ? "Mean MLA latency per 256×256 before/after pair" : "Mean MLA latency per 256×256 window";
   if (s && s.latency && s.latency.mean_ms && st === "ready") countTo($("#m-mla"), s.latency.mean_ms, fmtMs);
   else if (st !== "ready") setText($("#m-mla"), "—");
   // the Settings card's model row
@@ -263,6 +278,7 @@ function renderStatus(s) {
   const fp = $("#mr-family");
   fp.hidden = !fam;
   if (fam) { fp.textContent = FAMILY_PILL[fam] || cap(fam); fp.className = `fam-pill${fam === "dinov2" ? " zs" : ""}`; }
+  if (!state.current) showLabelCaps(caps());
   syncControls();
   updateComposer();
 }
@@ -1240,7 +1256,7 @@ function syncControls() {
   $("#ctl-diff").checked = o.mask_mode === "diff";
   const masks = caps().pixel_masks !== false;
   $("#ctl-diff").disabled = !o.register || !masks;
-  $("#ctl-diff").closest(".switch-row").title = masks ? "" : "DINOv2's change mask is already per pixel";
+  $("#ctl-diff").closest(".switch-row").title = masks ? "" : "This model's change mask is already per pixel";
   $("#set-meta").innerHTML = `${LEVEL_NAME[o.levels] || o.levels} · <b>${Number(o.thr).toFixed(2)}</b>${o.register ? " · Aligned" : ""}`;
 }
 let thrTimer = null;
@@ -1750,6 +1766,7 @@ function renderChips(r) {
   if (r.config && r.config.register) countTo($("#m-align"), t.register || 0, fmtMs);
   else setText($("#m-align"), "Off");
   const c = r.counts || {};
+  showLabelCaps(resultCaps(r));
   countTo($("#m-app"), c.appeared || 0, fmtInt);
   countTo($("#m-dis"), c.disappeared || 0, fmtInt);
   countTo($("#m-chg"), c.changed || 0, fmtInt);
@@ -1765,7 +1782,7 @@ function renderDetections(r) {
   const n = r.detections.length;
   $("#det-count").innerHTML = `<b>${n}</b> Found`;
   const c = r.counts || {};
-  $("#counts").innerHTML = LABELS.map((k) => `<span class="count-pill"><i class="sw ${k}"></i><b>${c[k] || 0}</b>${LABEL_TEXT[k]}</span>`).join("");
+  $("#counts").innerHTML = labelsOf(resultCaps(r)).map((k) => `<span class="count-pill"><i class="sw ${k}"></i><b>${c[k] || 0}</b>${LABEL_TEXT[k]}</span>`).join("");
   $("#dets").innerHTML = n ? detRows(r, r.detections.map((d, i) => i))
     : `<li class="empty-row">No changes above the threshold (${Number(r.config ? r.config.thr : state.opts.thr).toFixed(2)}).</li>`;
   // phones show the first 6 rows; the rest sit behind "Show all"
@@ -1789,7 +1806,7 @@ function setDetsExpanded(on) {
 /* Where a detection came from: CYWS names the branch and window level, DINOv2 the photo or tile. */
 function resultFamily(r) { return r.family || (r.config && r.config.family) || state.family || "cyws"; }
 function detWhere(r, d) {
-  if (resultFamily(r) === "dinov2") return !d.level ? "Whole Photo" : d.window_id > 0 ? `Tile ${d.window_id}` : "Tile";
+  if (resultFamily(r) === "dinov2" || resultFamily(r) === "c3po") return !d.level ? "Whole Photo" : d.window_id > 0 ? `Tile ${d.window_id}` : "Tile";
   return `${cap(d.branch || "after")} Branch · Level ${d.level}`;
 }
 function detRows(r, idx) {
@@ -1840,6 +1857,8 @@ function renderTimings(r) {
   const ms = lat ? `${lat < 10 ? lat.toFixed(1) : Math.round(lat)} ms` : "";
   $("#t-note").textContent = resultFamily(r) === "dinov2"
     ? `Model ${modelTitle(state.status, r.model)}${ms ? ` · MLA ≈ ${ms} per image` : ""}. Each photo and each tile is one image on the MLA.`
+    : resultFamily(r) === "c3po"
+    ? `Model ${modelTitle(state.status, r.model)}${ms ? ` · MLA ≈ ${ms} per pair` : ""}. The whole photo and each tile go to the MLA as one 256×256 before/after pair.`
     : `Model ${modelTitle(state.status, r.model)}${ms ? ` · MLA ≈ ${ms} per 256×256 window` : ""}. Cropping the next window overlaps the MLA, so the indented rows overlap "Preprocess + MLA".`;
 }
 
@@ -1848,7 +1867,7 @@ function renderSummary(r) {
   $("#m-summary").hidden = false;
   const m = r.metrics;
   // non-zero counts first; zero counts shrink to dot + 0 so the strip fits beside "Details"
-  const labs = [...LABELS].sort((a, b) => (!(c[b] || 0) ? 0 : 1) - (!(c[a] || 0) ? 0 : 1));
+  const labs = [...labelsOf(resultCaps(r))].sort((a, b) => (!(c[b] || 0) ? 0 : 1) - (!(c[a] || 0) ? 0 : 1));
   $("#ms-counts").innerHTML = labs.map((k) => { const v = c[k] || 0;
     return `<span class="count-pill${v ? "" : " zero"}" title="${v} ${k}" aria-label="${v} ${k}"><i class="sw ${k}"></i><b>${v}</b><span class="cp-word">${LABEL_TEXT[k]}</span></span>`; }).join("")
     + (m && m.f1 != null ? `<span class="count-pill">F1 <b>${pct(m.f1)}</b></span>` : "");
@@ -2108,7 +2127,7 @@ function bind() {
         { icon: "i-home", label: "Back to Start", run: goHome },
         { icon: "i-link", label: "Copy a Link to This View", run: copyLink },
         { icon: "i-play", label: "Run the Whole Test Set", run: () => { setTab("results"); runAll(); } },
-      ], `CYWS (Sachdeva &amp; Zisserman, WACV 2023) and DINOv2 (Meta), Apache-2.0 · Powered by <strong>Neat</strong> · © 2026 SiMa.ai, Inc.`);
+      ], `CYWS (Sachdeva &amp; Zisserman, WACV 2023) and DINOv2 (Meta), Apache-2.0; C-3PO (Wang et al., 2023), MIT · Powered by <strong>Neat</strong> · © 2026 SiMa.ai, Inc.`);
     } else setDrawer(!$("#workspace").classList.contains("rail-open"));
   });
   $("#scrim").addEventListener("click", () => setDrawer(false));

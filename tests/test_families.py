@@ -214,7 +214,7 @@ def test_status_fields(demo):
     st = demo.status()
     assert st["state"] == "ready" and st["family"] == "cyws"
     assert st["capabilities"] == {"per": "window", "pixel_masks": True, "labels": True}
-    assert set(st["families"]) == {"cyws", "dinov2"}
+    assert set(st["families"]) == {"cyws", "dinov2", "c3po"}
     for f in st["families"].values():
         assert {"title", "presets", "defaults", "option_spec", "capabilities"} <= set(f)
     assert st["families"]["dinov2"]["title"] == "DINOv2"

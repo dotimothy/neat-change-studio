@@ -2,7 +2,7 @@
 
 <p align="center"><img src="docs/assets/brand/neat-change.svg" alt="Neat Change Studio logo: a before frame and an after frame, with a new object boxed, and the Neat sparkle" width="128"></p>
 
-Before/after change detection on the SiMa.ai Modalix MLA, through NEAT: with CYWS, trained for change detection, or with DINOv2, zero-shot.
+Before/after change detection on the SiMa.ai Modalix MLA, through NEAT: with CYWS, trained for change detection, with DINOv2, zero-shot, or with C-3PO, trained change segmentation.
 
 ## Install
 
@@ -56,13 +56,17 @@ This downloads the latest `install.sh` and runs it with `STUDIO_UPDATE=1`, which
 
 The compiled models are on Hugging Face, one repository per model family:
 
-| model | family | repository | size | MLA time | testCYWS: changes found, pixel F1, false-alarm pairs |
+| model | family | repository | size | MLA time | testCYWS (Balanced preset): changes found, pixel F1, false-alarm pairs |
 |---|---|---|---|---|---|
 | `bf16` (the default) | CYWS, trained | [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws) | 119 MB | 35.2 ms per window pair | 33 / 47, 0.587, 2 / 15 |
 | `w8a16` | CYWS, trained | [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws) | 72 MB | 27.2 ms per window pair | 31 / 47, 0.581, 3 / 15 |
 | `dinov2-448` | DINOv2, zero-shot | [dotimothy/sima-dinov2](https://huggingface.co/dotimothy/sima-dinov2) | 77 MB | 24.5 ms per image | 28 / 47, 0.614, 2 / 15 |
+| `c3po-pcd` | C-3PO, trained on street panoramas | not on Hugging Face: [copy or compile it](#c-3po-change-segmentation) | 166 MB | 46.7 ms per pair¹ | 28 / 47, 0.518, 2 / 15 |
+| `c3po-csb` | C-3PO, trained on a simulated indoor factory | not on Hugging Face: [copy or compile it](#c-3po-change-segmentation) | 167 MB | 46.7 ms per pair¹ | 19 / 47, 0.524, 2 / 15 |
 
-The settings of both families were tuned on the testCYWS pairs themselves, so these numbers are optimistic for new scenes (see [DINOv2, zero-shot](#dinov2-zero-shot)).
+¹ `Model.benchmark`. A plain pyneat push → pull loop on the board took about 447 ms per C-3PO pair (see [C-3PO](#c-3po-change-segmentation)).
+
+The settings of every family were tuned on the testCYWS pairs themselves, so these numbers are optimistic for new scenes (see [DINOv2, zero-shot](#dinov2-zero-shot) and [C-3PO](#c-3po-change-segmentation)).
 
 They are kept in one **models directory**, shared by every install and left alone by updates, like Neat GenAI Studio's `/media/nvme/llima/models`. It is `/media/nvme/models/cyws` on a DevKit (`models/` in the app when there is no `/media/nvme`). `./setup.sh --models-dir DIR` moves it and remembers the choice (in `.models-dir`) for the web demo, the CLI and the alias; `CYWS_MODELS_DIR=DIR` does the same for one command; `./setup.sh --models-dir default` goes back. Setup names any models left in an app's own `models/` folder and the `mv` that brings them over. Besides `./setup.sh`, these download into it:
 
@@ -116,6 +120,29 @@ The second model family needs no change-detection training at all. [DINOv2](http
 | CYWS bf16, Balanced | 33 / 47 | 0.587 | 2 / 15 |
 
 These settings were tuned on the same pairs, for both models, so the numbers are optimistic for new scenes. In the web demo DINOv2 shares the controls: the presets (Fast: the whole photo; Balanced: plus tiles where the whole photo saw a change; Accurate: tiles everywhere, threshold 0.35), the threshold, the windows and photo alignment. Its MLA time is per image, so a pair is two images per window. The DINOv2 port, its compile and its evaluation are in a sibling project; the model card on [dotimothy/sima-dinov2](https://huggingface.co/dotimothy/sima-dinov2) has the input and output contract.
+
+### C-3PO, change segmentation
+
+The third family is [C-3PO](https://github.com/DoctorKey/C-3PO) ("How to Reduce Change Detection to Semantic Segmentation", Wang et al., Pattern Recognition 2023; MIT). It takes a before and an after image, 256×256 each, and segments what changed: a ResNet-18 shared by both photos, an MTF module that merges their features as appeared, disappeared and exchanged, MSF over four scales and a DeepLabV3 head (44.7 M parameters). It compiles to **one MLA ELF with no A65 stage** and runs in 46.7 ms per pair (`Model.benchmark`, 24.5 pairs/s, 12.8 W); bf16 agrees with FP32 on 99.98% of mask pixels. Two released checkpoints are compiled, with the same graph: **PCD** (street panoramas, `c3po-pcd`) and **ChangeSim binary** (a simulated indoor factory, `c3po-csb`). The studio runs the whole photo (and, like DINOv2, overlapping 0.6 tiles), takes the change probability 1 − P(no change) of each window, combines them by a per-pixel max and thresholds it into a mask and boxes. The checkpoints are binary, so every box is labelled *changed*: C-3PO cannot tell appeared from disappeared, and the page shows only the Changed count for it.
+
+| on testCYWS (FP32 ONNX, threshold 0.20) | changes found | pixel F1 | false-alarm pairs |
+|---|---|---|---|
+| C-3PO PCD, whole photo (Fast) | 26 / 47 | 0.499 | 1 / 15 |
+| C-3PO PCD, + gated 0.6 tiles (Balanced) | 28 / 47 | 0.518 | 2 / 15 |
+| C-3PO PCD, + all 0.6 tiles (Accurate) | 30 / 47 | 0.554 | 2 / 15 |
+| C-3PO ChangeSim, whole photo (Fast) | 19 / 47 | 0.524 | 2 / 15 |
+| C-3PO ChangeSim, + gated 0.6 tiles (Balanced) | 19 / 47 | 0.524 | 2 / 15 |
+| C-3PO ChangeSim, + all 0.6 tiles (Accurate) | 22 / 47 | 0.536 | 2 / 15 |
+
+Neither checkpoint was trained on photos like these, and it shows: C-3PO is behind CYWS and DINOv2 here. The threshold was tuned on the same pairs (0.10 to 0.50, the best pixel F1 with at most 2 false-alarm pairs), and 0.20 suits both checkpoints. The numbers are from ONNX Runtime FP32 on a PC. The 46.7 ms MLA time is `Model.benchmark`'s. A standalone pyneat loop on the board that pushes one pair and pulls its result before the next (the C-3PO port's `eval/board_run.py`) measured about 447 ms per pair (p50 447 ms, 28 pairs), about ten times that; the gap is outside the MLA, in the tensor path through pyneat. The studio keeps two pairs in flight to hide some of it, but its own per-pair time on the board is still to be measured, so expect up to about 0.45 s per pair: Fast runs one pair, Accurate 7 on a 4:3 photo.
+
+The C-3PO models are not on Hugging Face. To use one, copy its MPK into the models directory (`/media/nvme/models/cyws` on a DevKit) and it appears in the Models window:
+
+```bash
+scp c3po_pcd_256_bf16_mpk.tar.gz c3po_csb_256_bf16_mpk.tar.gz sima@<board>:/media/nvme/models/cyws/
+```
+
+To build them, use the C-3PO port, a sibling project (`MLSandbox/C3PO`): `model/export_onnx.py --ckpt pcd` (or `csb`) exports the ONNX, and `compile/compile.sh --precision bf16` compiles `build/bf16_pcd_256/c3po_pcd_256_bf16_mpk.tar.gz`. With `--backend onnx` the studio runs C-3PO on a PC from `C3PO_ONNX`, else `build/onnx/c3po_<ckpt>_256.onnx` here, else the sibling project's `build/onnx` (`C3PO_DIR`, default `../C3PO`).
 
 It is a sibling of [Neat Decision Studio](https://github.com/dotimothy/neat-decision-studio). The compiled models are on Hugging Face in the collection [SiMa.ai Change Detection Models](https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b). Results and measurements are in [report.md](report.md). The project page is at **[timothydo.me/neat-change-studio](https://timothydo.me/neat-change-studio/)**.
 
@@ -236,7 +263,7 @@ The `onnx` backend uses `build/onnx/cyws_fused.onnx`, which `model/fetch_upstrea
 | flag | meaning |
 |---|---|
 | `--port 8098` | port for both HTTP and HTTPS |
-| `--model bf16\|w8a16\|dinov2-448` | model to load at start (when its file is missing, the demo starts with no model loaded) |
+| `--model bf16\|w8a16\|dinov2-448\|c3po-pcd\|c3po-csb` | model to load at start (when its file is missing, the demo starts with no model loaded) |
 | `--models DIR` | where the MPKs are (default `models/`) |
 | `--data DIR` | test pairs to offer (default `data/testCYWS`) |
 | `--backend neat\|onnx\|fake` | board MLA, host ONNX FP32, or a synthetic stand-in |
@@ -333,6 +360,8 @@ There is one fused output, `(10, 256, 256)` float32, with channels `heat_b, heat
 
 **DINOv2** (`dinov2-448`) has one input, a float32 448×448×3 HWC image, RGB, pixel / 255 (the ImageNet mean/std is inside the model), and one output, `(1, 384, 1, 1029)` float32: the class token, 4 registers and 32×32 patch tokens, row by row.
 
+**C-3PO** (`c3po-pcd`, `c3po-csb`) has two inputs, `in0_before` and `in1_after`, pushed in that order, each a float32 256×256×3 HWC image, RGB, pixel / 255 (the ImageNet mean/std is inside the model), and one output, logits `(1, 2, 64, 64)` float32 (pyneat may hand them back channels last). Class 0 is no change; the change probability is 1 − softmax(logits)[0], upsampled bilinearly to the photo.
+
 ## Layout
 
 | path | what |
@@ -344,7 +373,7 @@ There is one fused output, `(10, 256, 256)` float32, with channels `heat_b, heat
 | `data/` | Dataset download from a manifest, dataset inspection, calibration tensors. |
 | `eval/` | Raw-output comparison against FP32, GPU backend, inference cache, parameter sweep. |
 | `bench/` | `bench_on_board.py`: streamed throughput and `Model.benchmark` on the DevKit. |
-| `tools/` | `publish_hub.py`, for maintainers: uploads the MPKs to Hugging Face and regenerates `models.json` (the list the app reads) and the model card, per family (`--family cyws\|dinov2`). Needs `huggingface_hub` and write access to the repository; `--dry-run DIR` writes the two files locally instead. |
+| `tools/` | `publish_hub.py`, for maintainers: uploads the MPKs to Hugging Face and regenerates `models.json` (the list the app reads) and the model card, per family (`--family cyws\|dinov2\|c3po`; C-3PO is not published, so only use `--dry-run` for it for now). Needs `huggingface_hub` and write access to the repository; `--dry-run DIR` writes the two files locally instead. |
 | `results/` | Small result files behind the numbers in the report: the parameter sweep (`sweep_RESULTS.md`) and the board-vs-FP32 comparisons (`eval/`). |
 | `tests/` | pytest suite (host, no board needed). |
 | `install.sh`, `setup.sh`, `run.sh`, `deploy.sh`, `run_all.sh` | install or update on the board, board setup (packages, model, certificate, alias, desktop icon), CLI runner, deploy from a host, full reproduction. |
@@ -359,6 +388,7 @@ CYWS is by Ragav Sachdeva and Andrew Zisserman (The Change You Want to See, WACV
 
 - **Derived files:** the checkpoint, the ONNX files and the compiled MPKs are derived from the authors' pretrained weights and are also Apache-2.0. None of them is in this repository; the MPKs are on [Hugging Face](https://huggingface.co/dotimothy/sima-cyws).
 - **DINOv2:** its code and pretrained weights are by Meta Platforms, Inc. (https://github.com/facebookresearch/dinov2), under the Apache License 2.0. The compiled `dinov2-448` model is derived from those weights and is Apache-2.0 too; it is on [Hugging Face](https://huggingface.co/dotimothy/sima-dinov2).
+- **C-3PO:** its code and pretrained weights are by Guo-Hua Wang et al. (https://github.com/DoctorKey/C-3PO), under the MIT License. The compiled `c3po-pcd` and `c3po-csb` models are derived from those weights and are MIT too; they are not in this repository or on Hugging Face.
 - **This repository's code** is Apache-2.0.
 - **Fonts:** Inter and JetBrains Mono, in the web demo, are under the SIL Open Font License 1.1.
 - **Trademarks:** SiMa.ai, Modalix, Neat and the logos in `webapp/web/assets` are trademarks of SiMa.ai and are not covered by the Apache License.
@@ -382,5 +412,16 @@ For the DINOv2 model:
   author={Oquab, Maxime and Darcet, Timoth{\'e}e and Moutakanni, Th{\'e}o and others},
   journal={Transactions on Machine Learning Research},
   year={2024}
+}
+```
+
+For the C-3PO model:
+
+```bibtex
+@article{wang2023c3po,
+  title={How to Reduce Change Detection to Semantic Segmentation},
+  author={Wang, Guo-Hua and Gao, Bin-Bin and Wang, Chengjie},
+  journal={Pattern Recognition},
+  year={2023}
 }
 ```
