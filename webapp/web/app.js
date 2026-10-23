@@ -788,13 +788,19 @@ async function startStream() {
   const msg = $("#cam-msg");
   msg.hidden = true;
   $("#cam-step").textContent = "Starting the Camera…";
-  const dev = cam.devices[cam.dev];
   const video = { width: { ideal: 1920 }, height: { ideal: 1080 } };
-  if (dev && dev.deviceId) video.deviceId = { exact: dev.deviceId }; else video.facingMode = { ideal: "environment" };
+  const wanted = cam.choice && !cam.missing ? cam.choice : "";
+  if (wanted) video.deviceId = { exact: wanted }; else video.facingMode = { ideal: "environment" };
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
   } catch (e) {
+    if (wanted && (e.name === "OverconstrainedError" || e.name === "NotFoundError")) {
+      cam.missing = true;                 // the chosen camera is unplugged: use the default one this time
+      toast("The camera chosen in Settings isn't connected. Using the default camera.", "info", 5000);
+      renderCamSetting();
+      return startStream();
+    }
     const retry = `<button type="button" class="btn primary" data-cam-retry>Try Again</button>`;
     msg.innerHTML = e.name === "NotAllowedError" || e.name === "SecurityError"
       ? `<b>Camera Access Blocked</b><p>Allow the camera for this site (the camera icon in the address bar), then try again.</p>${retry}`
@@ -812,13 +818,10 @@ async function startStream() {
   cam.stream = stream;
   const track = stream.getVideoTracks()[0];
   const settings = track.getSettings ? track.getSettings() : {};
-  if (!cam.devices.length) {               // labels and ids are only listed once permission is granted
-    try {
-      cam.devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
-      cam.dev = Math.max(0, cam.devices.findIndex((d) => d.deviceId === settings.deviceId));
-    } catch (e) { cam.devices = []; }
-  }
+  cam.devices = await listCameras();        // labels and ids are only listed once permission is granted
+  cam.dev = Math.max(0, cam.devices.findIndex((d) => d.deviceId === settings.deviceId));
   $("#cam-flip").hidden = cam.devices.length < 2;
+  renderCamSetting();
   track.addEventListener("ended", () => { if (cam.stream === stream) { if (cam.live) { toast("The camera stopped", "error"); stopLive(); } else { stopStream(); camUnavailable(); } } });
   const v = $("#cam-video");
   v.srcObject = stream;
@@ -829,6 +832,73 @@ async function startStream() {
   $("#cam-stage").classList.toggle("mirror", facesUser);
   if (v.videoWidth) $("#cam-stage").style.setProperty("--cam-ar", `${v.videoWidth} / ${v.videoHeight}`);
   renderCam();
+}
+
+/* ---- Camera choice (Settings > Camera): which camera the webcam opens. "" is Automatic, the
+   rear camera on a phone and the browser's default elsewhere. Remembered in this browser; an
+   unplugged choice falls back to Automatic until it is back or another one is picked. */
+const CAM_KEY = "cyws-cam-device";
+cam.choice = store.get(CAM_KEY, "") || "";
+cam.missing = false;
+
+async function listCameras() {
+  if (!(navigator.mediaDevices && navigator.mediaDevices.enumerateDevices)) return [];
+  try { return (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput"); } catch (e) { return []; }
+}
+
+const camName = (d, i) => (d.label || `Camera ${i + 1}`).replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, "");
+
+let camSettingTok = 0;
+async function renderCamSetting() {
+  const sel = $("#ctl-camera"), hint = $("#cam-hint"), allow = $("#cam-allow");
+  const tok = ++camSettingTok;
+  if (!camSupported()) {
+    sel.innerHTML = `<option value="">Automatic</option>`;
+    sel.disabled = true;
+    allow.hidden = true;
+    const url = `https://${location.host}${location.pathname}`;
+    hint.innerHTML = location.protocol === "http:"
+      ? `Browsers only allow cameras on HTTPS pages. <a href="${esc(url)}">Open the secure page</a> to pick one.`
+      : "This browser doesn't offer camera access.";
+    hint.hidden = false;
+    return;
+  }
+  const devs = await listCameras();
+  if (tok !== camSettingTok) return;       // a newer render started while this one waited
+  const named = devs.filter((d) => d.deviceId);
+  const known = named.some((d) => d.deviceId === cam.choice);
+  if (known) cam.missing = false;
+  const opts = [`<option value="">Automatic${mq.coarse.matches ? " (Rear Camera)" : ""}</option>`]
+    .concat(named.map((d, i) => `<option value="${esc(d.deviceId)}">${esc(camName(d, i))}</option>`));
+  if (cam.choice && !known && named.length) opts.push(`<option value="${esc(cam.choice)}">Saved Camera (Not Connected)</option>`);
+  sel.innerHTML = opts.join("");
+  sel.value = cam.choice && (known || named.length) ? cam.choice : "";
+  sel.disabled = false;
+  const unnamed = !named.length || named.every((d) => !d.label);   // no permission yet: ids or names are hidden
+  allow.hidden = !unnamed || !devs.length;
+  hint.hidden = false;
+  hint.textContent = !devs.length ? "No camera found. Connect one, and it appears here."
+    : unnamed ? "Allow camera access once to list the cameras by name."
+      : cam.choice && !known ? "The saved camera isn't connected, so the webcam uses Automatic."
+        : `${named.length} camera${named.length === 1 ? "" : "s"} found. ${cam.choice ? "The webcam opens with this one." : "Automatic uses the browser's default."}`;
+}
+
+function setCamChoice(id) {
+  cam.choice = id || "";
+  cam.missing = false;
+  store.set(CAM_KEY, cam.choice);
+  renderCamSetting();
+  if (cam.stream) startStream();           // the webcam is open: switch now
+}
+
+async function allowCamNames() {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    s.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    toast(e.name === "NotAllowedError" ? "Camera access was blocked. Allow it from the address bar, then try again." : `Camera error: ${e.message || e.name}`, "error", 6000);
+  }
+  renderCamSetting();
 }
 
 function stopStream() {
@@ -2186,7 +2256,17 @@ function bind() {
   $("#cam-shutter").addEventListener("click", camShutter);
   $("#cam-live").addEventListener("click", startLive);
   $("#cam-stop").addEventListener("click", stopLive);
-  $("#cam-flip").addEventListener("click", () => { if (cam.devices.length > 1) { cam.dev = (cam.dev + 1) % cam.devices.length; startStream(); } });
+  $("#cam-flip").addEventListener("click", () => {
+    if (cam.devices.length < 2) return;
+    cam.dev = (cam.dev + 1) % cam.devices.length;
+    setCamChoice(cam.devices[cam.dev].deviceId);      // the Settings dropdown follows
+  });
+  $("#ctl-camera").addEventListener("change", (e) => setCamChoice(e.target.value));
+  $("#cam-allow").addEventListener("click", allowCamNames);
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener("devicechange", () => { cam.missing = false; renderCamSetting(); });
+  }
+  renderCamSetting();
   $("#cam-ghost-btn").addEventListener("click", () => { cam.ghost = !cam.ghost; renderCam(); });
   $("#cam-timer").addEventListener("click", cycleTimer);
   $("#cam-align-btn").addEventListener("click", toggleAlign);

@@ -305,6 +305,15 @@
             <label class="switch-row"><input type="checkbox" role="switch" id="ctl-gated"><span class="sw-text"><b>Gated Tiles</b><small>Run tiles only where a change is likely</small></span></label>
             <label class="switch-row"><input type="checkbox" role="switch" id="ctl-diff"><span class="sw-text"><b>Pixel Masks</b><small>Mask from the pixel difference in each box (needs Align Photos)</small></span></label>
           </div>
+          <div class="setting" id="cam-setting">
+            <label class="setting-label" for="ctl-camera">Camera</label>
+            <div class="select-wrap">
+              <select id="ctl-camera" class="select"><option value="">Automatic</option></select>
+              <svg class="sel-chev" aria-hidden="true"><use href="#i-chev"/></svg>
+            </div>
+            <p class="hint" id="cam-hint" hidden></p>
+            <button type="button" class="btn block" id="cam-allow" hidden><svg><use href="#i-webcam"/></svg><span>Show Camera Names</span></button>
+          </div>
           <div class="setting">
             <div class="setting-label">Model</div>
             <div class="model-row" id="model-row">
