@@ -5,8 +5,9 @@
 #   ./run.sh --mode dataset --dataset-dir data/testCYWS --levels 0,1 --tiles gated --bench
 #
 # Defaults added when not given: --model-path <models dir>/cyws_bf16_mpk.tar.gz (or
-# the only MPK there; the models dir is set by webapp/models_dir.sh) for the neat backend, and --out ./out. Relative paths are
-# resolved against the directory you call this from, not app/.
+# the only cyws_*_mpk.tar.gz there; the models dir is set by webapp/models_dir.sh) for the
+# neat backend, and --out ./out. Other models in that directory (DINOv2) are for the web demo
+# only. Relative paths are resolved against the directory you call this from, not app/.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VENV="${PYNEAT_VENV:-$HOME/pyneat}"
@@ -52,13 +53,13 @@ if ((!has_model)) && [[ -z "$backend" || "$backend" == neat ]]; then
   MODELS_DIR="$(cyws_models_dir "$HERE")"
   mpk="$MODELS_DIR/cyws_bf16_mpk.tar.gz"
   if [[ ! -f "$mpk" ]]; then
-    shopt -s nullglob; found=("$MODELS_DIR"/*_mpk.tar.gz); shopt -u nullglob
+    shopt -s nullglob; found=("$MODELS_DIR"/cyws_*_mpk.tar.gz); shopt -u nullglob   # never a DINOv2 MPK
     ((${#found[@]} == 1)) && mpk="${found[0]}" || mpk=""
   fi
   if [[ -n "$mpk" ]]; then
     args+=(--model-path "$mpk")
   else
-    echo "No model in $MODELS_DIR. Download one from Hugging Face first:" >&2
+    echo "No CYWS model in $MODELS_DIR. Download one from Hugging Face first:" >&2
     echo "  $HERE/webapp/run.sh --fetch bf16      (or: w8a16, all)" >&2
     exit 1
   fi

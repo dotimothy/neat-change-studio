@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Before/after change detection with CYWS, running on the SiMa Modalix MLA.">
+<meta name="description" content="Before/after change detection with CYWS and zero-shot DINOv2, running on the SiMa Modalix MLA.">
 <meta name="theme-color" content="#0c0f14" id="meta-theme">
 <title>Neat Change Studio</title>
 <link rel="icon" type="image/svg+xml" href="/static/assets/neat-change.svg">
@@ -21,6 +21,7 @@
   try { var t = localStorage.getItem("cyws-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) { /* storage blocked */ }
 </script>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/model-manager.css">
 </head>
 <body class="spectrum-accents" data-tab="detect">
 
@@ -77,7 +78,7 @@
       <img class="brand-mark" src="/static/assets/neat-change.svg" alt="" width="36" height="36">
       <span class="brand-text">
         <span class="brand-title"><span class="brand-neat">Neat </span>Change Studio</span>
-        <span class="brand-sub">Before/After Change Detection · CYWS on the Modalix MLA</span>
+        <span class="brand-sub">Before/After Change Detection on the Modalix MLA</span>
       </span>
     </a>
     <div class="header-actions">
@@ -87,6 +88,7 @@
       <button type="button" class="icon-btn hide-phone" id="btn-home" title="Back to start" aria-label="Back to start"><svg><use href="#i-home"/></svg></button>
       <button type="button" class="icon-btn hide-phone" id="btn-link" title="Copy a link to this view" aria-label="Copy a link to this view"><svg><use href="#i-link"/></svg></button>
       <button type="button" class="icon-btn" id="btn-fs" title="Full Screen" aria-label="Full screen" aria-pressed="false"><svg class="ic-enter"><use href="#i-expand"/></svg><svg class="ic-exit"><use href="#i-shrink"/></svg></button>
+      <button type="button" class="icon-btn" id="btn-models" title="Models" aria-label="Models" aria-haspopup="dialog"><svg><use href="#i-chip"/></svg></button>
       <button type="button" class="icon-btn" id="btn-settings" title="Settings" aria-label="Settings" aria-controls="rail"><svg><use href="#i-sliders"/></svg></button>
       <button type="button" class="icon-btn" id="btn-theme" title="Toggle dark / light" aria-label="Toggle dark or light theme"><svg class="ic-moon"><use href="#i-moon"/></svg><svg class="ic-sun"><use href="#i-sun"/></svg></button>
       <button type="button" class="icon-btn not-desktop" id="btn-menu" title="Menu" aria-label="Open menu" aria-expanded="false" aria-controls="rail"><svg class="ic-menu"><use href="#i-menu"/></svg><svg class="ic-close"><use href="#i-close"/></svg></button>
@@ -100,7 +102,7 @@
         <div class="metric-group">
           <div class="metric-group-head"><svg class="mg-ic"><use href="#i-chip"/></svg>On the MLA<span class="metric-group-model" id="chip-model"></span></div>
           <div class="metric-group-items">
-            <div class="metric-item" title="Mean MLA latency per 256×256 window"><span class="metric-value" id="m-mla">—</span><span class="metric-label">Per Window</span></div>
+            <div class="metric-item" id="mi-mla" title="Mean MLA latency per 256×256 window"><span class="metric-value" id="m-mla">—</span><span class="metric-label" id="m-mla-label">Per Window</span></div>
             <div class="metric-item" title="Windows (global view + tiles) run on the MLA for this pair"><span class="metric-value" id="m-windows">—</span><span class="metric-label" id="m-windows-label">Windows</span></div>
           </div>
         </div>
@@ -139,7 +141,7 @@
           </div>
           <p class="hero-powered">Powered by <strong>Neat</strong> · <strong>Modalix MLA</strong></p>
           <p class="hero-sub">Give it two photos of the same scene and it marks every object that appeared, disappeared or changed. Change Detection runs entirely on the SiMa Modalix MLA.</p>
-          <button type="button" class="hero-model" id="hero-model" title="Model settings"><span class="hm-dot"></span><span id="hero-model-text">Connecting…</span></button>
+          <button type="button" class="hero-model" id="hero-model" title="Models" aria-haspopup="dialog"><span class="hm-dot"></span><span id="hero-model-text">Connecting…</span></button>
           <div class="suggest-row" id="suggest-row" aria-label="Try a test pair"></div>
           <p class="hero-hint"><kbd>←</kbd><kbd>→</kbd> Browse the Test Set · <kbd>Enter</kbd> Detect</p>
         </section>
@@ -305,10 +307,11 @@
           </div>
           <div class="setting">
             <div class="setting-label">Model</div>
-            <div class="models" id="models" role="radiogroup" aria-label="Model"></div>
-            <div class="mm-storage" id="models-storage" hidden></div>
-            <p class="models-src" id="models-src"></p>
-            <p class="err-line" id="model-err" hidden></p>
+            <div class="model-row" id="model-row">
+              <span class="mr-dot" id="mr-dot" aria-hidden="true"></span>
+              <span class="mr-text"><span class="mr-name" id="mr-name">Connecting…</span><span class="fam-pill" id="mr-family" hidden></span></span>
+              <button type="button" class="btn mr-manage" id="btn-manage-models" aria-haspopup="dialog"><svg><use href="#i-chip"/></svg><span>Manage Models</span></button>
+            </div>
           </div>
         </div>
       </section>
@@ -363,7 +366,7 @@
       </section>
 
       <footer class="rail-foot" data-tab="settings">
-        <span>CYWS (Sachdeva &amp; Zisserman, WACV&nbsp;2023; Apache&#8209;2.0)</span>
+        <span>CYWS (Sachdeva &amp; Zisserman, WACV&nbsp;2023) and DINOv2 (Meta), Apache&#8209;2.0</span>
         <span>Powered by <strong>Neat</strong> · © 2026 SiMa.ai, Inc.</span>
       </footer>
     </aside>
@@ -385,8 +388,8 @@
     <h2 class="confirm-title" id="confirm-title"></h2>
     <p class="confirm-body" id="confirm-body"></p>
     <div class="confirm-actions">
-      <button type="submit" class="mm-act ghost" value="cancel" id="confirm-cancel">Cancel</button>
-      <button type="submit" class="mm-act danger" value="ok" id="confirm-ok"></button>
+      <button type="submit" class="cbtn ghost" value="cancel" id="confirm-cancel">Cancel</button>
+      <button type="submit" class="cbtn danger" value="ok" id="confirm-ok"></button>
     </div>
   </form>
 </dialog>
@@ -485,6 +488,7 @@
 <div class="toasts" id="toasts" aria-live="assertive" aria-atomic="false"></div>
 <input type="file" id="file-pick" accept="image/*" hidden>
 <input type="file" id="file-cam" accept="image/*" capture="environment" hidden>
+<script src="/static/model-manager.js" defer></script>
 <script src="/static/app.js" defer></script>
 </body>
 </html>

@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
-"""Publish the compiled CYWS models to Hugging Face, for the web demo's model catalog.
+"""Publish compiled change-detection models to Hugging Face, for the web demo's model catalog.
 
-Each model is one MPK (`cyws_<name>_mpk.tar.gz`), uploaded into a folder of its name.
-`models.json` at the top of the repository lists them with sizes and SHA-256 sums, and the
-web app reads that list to offer the models for download (webapp/server.py, `Hub`): it
-fetches a model onto the board, checks its sum, and can then load it on the MLA.
-The repository also gets a model card (README.md), and is added to a collection.
+Each model is one MPK, uploaded into a folder of its name. `models.json` at the top of the
+repository lists them with sizes and SHA-256 sums, and the web app reads that list to offer
+the models for download (webapp/server.py, `Hub`): it fetches a model onto the board, checks
+its sum, and can then load it on the MLA. The repository also gets a model card (README.md),
+and is added to a collection.
 
-    python3 tools/publish_hub.py                              # both models, card, list, collection
+There is one repository per model family:
+    cyws    dotimothy/sima-cyws     CYWS, trained for change detection (two 256x256 windows in)
+    dinov2  dotimothy/sima-dinov2   DINOv2 ViT-S/14, used zero-shot (one 448x448 image in)
+
+    python3 tools/publish_hub.py                              # CYWS: both models, card, list, collection
     python3 tools/publish_hub.py --only w8a16                 # one model (the list keeps the others)
     python3 tools/publish_hub.py --list-only                  # models.json and the card only
+    python3 tools/publish_hub.py --family dinov2              # DINOv2 (build in ../DINOv2/build/bf16_448/)
+    python3 tools/publish_hub.py --family dinov2 --dry-run out/hub   # write models.json and README.md, upload nothing
 
-Needs `huggingface_hub` and a login with write access (`hf auth login`).
+An upload needs `huggingface_hub` and a login with write access (`hf auth login`); a dry run
+needs neither.
 """
 from __future__ import annotations
 
@@ -21,12 +28,15 @@ import json
 import sys
 from pathlib import Path
 
-from huggingface_hub import HfApi
-
 ROOT = Path(__file__).resolve().parents[1]
-REPO = "dotimothy/sima-cyws"
+APP = "https://github.com/dotimothy/neat-change-studio"
 COLLECTION = "SiMa.ai Change Detection Models"
-COLLECTION_ABOUT = "Before/after change detection compiled for SiMa.ai Modalix: two photos in, boxes around what changed out, in one MLA pass."  # <= 150 chars
+COLLECTION_ABOUT = ("Change detection compiled for SiMa.ai Modalix: CYWS (trained) and zero-shot DINOv2. "
+                    "Two photos in, boxes around what changed out.")
+assert len(COLLECTION_ABOUT) <= 150, "Hugging Face caps a collection's description at 150 characters"
+
+# ---------------------------------------------------------------------------- CYWS
+REPO = "dotimothy/sima-cyws"
 UPSTREAM = "https://github.com/ragavsachdeva/The-Change-You-Want-to-See"
 NOTE = "CYWS (WACV 2023), bf16 and w8a16, one MLA stage. ~35 ms per pair. Apache-2.0."
 
@@ -56,6 +66,27 @@ CARD = {"model": "The Change You Want to See (Sachdeva & Zisserman, WACV 2023)",
         "input": "before + after, 256x256 RGB each", "upstream": "ragavsachdeva/The-Change-You-Want-to-See",
         "license": "Apache-2.0"}
 
+# ---------------------------------------------------------------------------- DINOv2
+DINO_REPO = "dotimothy/sima-dinov2"
+DINO_UPSTREAM = "https://github.com/facebookresearch/dinov2"
+DINO_NOTE = "DINOv2 ViT-S/14 (Meta), bf16, one MLA stage, used zero-shot for change detection. 24.5 ms per image. Apache-2.0."
+# Numbers are from ../DINOv2/README.md: Model.benchmark on a Modalix DevKit (NEAT 0.5.0), and
+# zero-shot change detection on testCYWS, scored with Change Studio's own metrics.
+DINO_MODELS = {
+    "dinov2-448": {
+        "build": "../DINOv2/build/bf16_448/dinov2_vits14_reg_448_bf16_mpk.tar.gz", "title": "DINOv2 448",
+        "precision": "BF16",
+        "about": "Zero-shot: finds what changed by comparing DINOv2 features of the two photos, with no change-detection training.",
+        "latency_ms": 24.5,                                  # per image, not per pair
+        "input": {"size": 448, "images": 1},
+        "accuracy": {"changes_found": "28 / 47", "pixel_f1": 0.614, "false_alarm_pairs": "2 / 15"},
+    },
+}
+DINO_CARD = {"model": "DINOv2 ViT-S/14 with registers (Meta)",
+             "architecture": "Vision Transformer ViT-S/14 with 4 registers; used zero-shot, no change-detection training",
+             "input": "one 448x448 RGB image -> 32x32 patches", "upstream": "facebookresearch/dinov2",
+             "license": "Apache-2.0"}
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -65,14 +96,19 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def entry(name: str, spec: dict) -> dict:
+def entry(name: str, spec: dict, family: str) -> dict:
+    """One models.json entry (the rules it must pass are in webapp/server.py, `Hub`)."""
     path = ROOT / spec["build"]
-    return {"title": spec["title"], "about": spec["about"], "path": name, "precision": spec["precision"],
-            "latency_ms": spec["latency_ms"], "accuracy": spec["accuracy"], "card": CARD,
-            "files": [{"name": path.name, "bytes": path.stat().st_size, "sha256": sha256(path)}]}
+    out = {"title": spec["title"], "about": spec["about"], "path": name, "family": family,
+           "precision": spec["precision"], "latency_ms": spec["latency_ms"], "accuracy": spec["accuracy"],
+           "card": FAMILIES[family]["card"],
+           "files": [{"name": path.name, "bytes": path.stat().st_size, "sha256": sha256(path)}]}
+    if "input" in spec:
+        out["input"] = spec["input"]
+    return out
 
 
-def card(repo: str, models: dict) -> str:
+def cyws_card(repo: str, models: dict) -> str:
     def mb(e):
         return f"{sum(f['bytes'] for f in e['files']) / 1e6:.0f} MB"
     rows = "\n".join(
@@ -130,9 +166,9 @@ wh_a(w,h), off_b(x,y), off_a(x,y)`, with the heat channels already passed throug
 
 ## Using them
 
-On a Modalix board, use [Neat Change Studio](https://github.com/dotimothy/neat-change-studio).
+On a Modalix board, use [Neat Change Studio]({APP}).
 Its web demo lists the models in this repository (`models.json`) and downloads one onto the
-board from Settings → Model. From a terminal:
+board from the Models window (Add Model). From a terminal:
 
 ```bash
 webapp/run.sh --list-hub          # what is here and what is on the board
@@ -186,7 +222,7 @@ These files are derived from those weights and are Apache-2.0 too:
 - it is compiled in bf16, or with int8 weights for w8a16.
 
 Nothing was retrained. The code that does this is at
-[dotimothy/neat-change-studio](https://github.com/dotimothy/neat-change-studio).
+[dotimothy/neat-change-studio]({APP}).
 
 ```bibtex
 @inproceedings{{sachdeva2023change,
@@ -199,44 +235,230 @@ Nothing was retrained. The code that does this is at
 """
 
 
+def dinov2_card(repo: str, models: dict) -> str:
+    def mb(e):
+        return f"{sum(f['bytes'] for f in e['files']) / 1e6:.0f} MB"
+    rows = "\n".join(
+        f"| `{n}/{e['files'][0]['name']}` | {e['precision']} | {e['input']['size']} x {e['input']['size']} | "
+        f"{e['latency_ms']:g} ms | {mb(e)} |"
+        for n, e in models.items())
+    return f"""---
+license: apache-2.0
+library_name: sima-neat
+pipeline_tag: image-feature-extraction
+tags:
+- sima.ai
+- modalix
+- mla
+- edge
+- dinov2
+- zero-shot
+- change-detection
+---
+
+# DINOv2 for zero-shot change detection, compiled for the SiMa.ai MLSoC Modalix
+
+[DINOv2]({DINO_UPSTREAM}) (Meta) is a general image feature extractor. This is its ViT-S/14
+with 4 registers (`dinov2_vits14_reg4_pretrain`), compiled for the Modalix MLA with SiMa.ai's
+Model Compiler. The whole network is **one MLA stage, with nothing on the CPU** (4 EV74 plugins
+for the data path), and one 448x448 image takes 24.5 ms.
+
+[Neat Change Studio]({APP}) uses it **zero-shot** to find what changed
+between a before and an after photo: nothing was trained for change detection.
+
+| file | precision | input | MLA latency per image | size |
+|---|---|---|---|---|
+{rows}
+
+- **Latency:** `Model.benchmark` on a Modalix DevKit (NEAT 0.5.0), plugins included: 50 images/s
+  at 14.0 W. A before/after pair is two images.
+- **Features vs PyTorch FP32** (12 real photos): patch cosine 0.994, centred patch cosine 0.997.
+
+## How it finds changes
+
+Both photos go through DINOv2, and so do overlapping tiles of them, which show small objects
+larger. A patch of the after photo with no similar patch nearby in the before photo is new; a
+patch of the before photo with no similar patch nearby in the after photo is gone. The score
+map is thresholded into a mask and boxes, each labelled appeared, disappeared or changed.
+
+On testCYWS (28 before/after pairs of phone photos, 47 annotated changes, 15 pairs where
+nothing changed), scored with Change Studio's own metrics:
+
+| setting | changes found | pixel F1 | false-alarm pairs |
+|---|---|---|---|
+| whole photo only (board bf16) | 27 / 47 | 0.566 | 1 / 15 |
+| whole photo + 0.6 tiles (the app's balanced preset) | 28 / 47 | **0.614** | 2 / 15 |
+| + tiles, recall-leaning (threshold 0.35) | 30 / 47 | 0.603 | 3 / 15 |
+| CYWS bf16, trained for change detection ([sima-cyws](https://huggingface.co/dotimothy/sima-cyws)) | 33 / 47 | 0.587 | 2 / 15 |
+
+- **Caveat:** for both models the settings were tuned on these same pairs, so treat the numbers
+  as optimistic for new scenes.
+- The tile rows were scored with FP32 features. On the whole photo, the board's bf16 features
+  score 0.566 against 0.569 for FP32, so the compiled model loses next to nothing here.
+- The tile settings: tiles count only where the whole-photo map is at least 0.2, threshold 0.40,
+  neighbourhood radius 0, border 1, smallest box 0.2% of the photo, blur 1.
+
+## Input and output
+
+- **Input:** one float32 448x448x3 tensor, HWC, RGB, pixel / 255. The ImageNet mean/std is
+  inside the model.
+- **Output:** float32 `(1, 384, 1, 1029)` after the final LayerNorm: 1029 = 1 class token +
+  4 registers + 32 x 32 patch tokens, row by row. The runtime may hand it back channels last,
+  as `(1029, 384)`.
+
+## Using it
+
+On a Modalix board, use [Neat Change Studio]({APP}). Its web demo lists the models in this
+repository (`models.json`) and downloads one onto the board from the Models window
+(Add Model). From a terminal:
+
+```bash
+webapp/run.sh --list-hub          # what is here and what is on the board
+webapp/run.sh --fetch dinov2-448  # downloaded into models/ and checked
+```
+
+Without the app:
+
+```bash
+hf download {repo} dinov2-448/dinov2_vits14_reg_448_bf16_mpk.tar.gz --local-dir .
+```
+
+```python
+import numpy as np, pyneat
+
+opt = pyneat.ModelOptions()
+opt.preprocess.kind = pyneat.InputKind.Tensor               # raw tensors in, no image preprocessing
+model = pyneat.Model("dinov2-448/dinov2_vits14_reg_448_bf16_mpk.tar.gz", opt)
+
+def tensor(hwc):
+    t = pyneat.Tensor.from_numpy(np.ascontiguousarray(hwc, np.float32), copy=True)
+    t.layout = pyneat.TensorLayout.HWC
+    return t
+
+image = np.zeros((448, 448, 3), np.float32)                 # your photo: RGB / 255, HWC
+run = model.build([tensor(image)])
+run.push_tensors([tensor(image)])
+sample = run.pull(10000)
+t = sample.tensors[0] if sample.tensors else sample.tensor
+y = np.array(t.to_numpy(), np.float32, copy=True)
+feat = y.reshape(384, -1).T if y.shape[-1] != 384 else y.reshape(-1, 384)   # (1029, 384)
+cls, patches = feat[0], feat[5:].reshape(32, 32, 384)
+run.close()
+```
+
+These files only run on the MLA. For PyTorch, use the [original weights]({DINO_UPSTREAM}).
+
+## License and attribution
+
+**Apache-2.0.** DINOv2, its code and pretrained weights, is by Meta Platforms, Inc.
+({DINO_UPSTREAM}) and released under the Apache License 2.0.
+
+These files are derived from those weights and are Apache-2.0 too:
+- the network is rewritten to compile for the MLA, with the same function (within 5e-5);
+- the ImageNet normalisation and the position embedding for 448x448 are folded in;
+- it is compiled in bf16.
+
+Nothing was retrained. The code that does this, and the change detection on top, is at
+[dotimothy/neat-change-studio]({APP}).
+
+```bibtex
+@article{{oquab2023dinov2,
+  title   = {{DINOv2: Learning Robust Visual Features without Supervision}},
+  author  = {{Oquab, Maxime and Darcet, Timoth{{\\'e}}e and Moutakanni, Th{{\\'e}}o and others}},
+  journal = {{Transactions on Machine Learning Research}},
+  year    = {{2024}}
+}}
+@inproceedings{{darcet2024registers,
+  title     = {{Vision Transformers Need Registers}},
+  author    = {{Darcet, Timoth{{\\'e}}e and Oquab, Maxime and Mairal, Julien and Bojanowski, Piotr}},
+  booktitle = {{International Conference on Learning Representations (ICLR)}},
+  year      = {{2024}}
+}}
+```
+"""
+
+
+# One repository per family: what it holds, its model card and its note in the collection.
+FAMILIES = {
+    "cyws": {"repo": REPO, "models": MODELS, "card": CARD, "readme": cyws_card, "note": NOTE},
+    "dinov2": {"repo": DINO_REPO, "models": DINO_MODELS, "card": DINO_CARD, "readme": dinov2_card, "note": DINO_NOTE},
+}
+
+
+def document(family: str, names) -> dict:
+    """models.json: version 2 adds `family` (top level and per entry) and `input`; older apps ignore both."""
+    models = {n: entry(n, FAMILIES[family]["models"][n], family) for n in names}
+    return {"app": "neat-change-studio", "version": 2, "family": family, "models": models}
+
+
+def dry_run(family: str, repo: str, out: Path) -> int:
+    """Write models.json and README.md for the builds found here, and touch no network."""
+    fam = FAMILIES[family]
+    names = [n for n, s in fam["models"].items() if (ROOT / s["build"]).is_file()]
+    missing = [f"{n} ({fam['models'][n]['build']})" for n in fam["models"] if n not in names]
+    doc = document(family, names)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "models.json").write_text(json.dumps(doc, indent=1) + "\n")
+    (out / "README.md").write_text(fam["readme"](repo, doc["models"]))
+    print(f"dry run, nothing uploaded: {out}/models.json and README.md for {repo}")
+    print(f"listed: {', '.join(names) or 'nothing'}")
+    if missing:
+        print(f"no build for: {', '.join(missing)}")
+    print(f"collection: {COLLECTION!r}: {COLLECTION_ABOUT}")
+    print(f"collection note: {fam['note']}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--repo", default=REPO)
-    ap.add_argument("--only", nargs="+", choices=list(MODELS))
+    ap.add_argument("--family", choices=list(FAMILIES), default="cyws")
+    ap.add_argument("--repo", help="default: the family's repository")
+    ap.add_argument("--only", nargs="+", help="upload only these models of the family")
     ap.add_argument("--list-only", action="store_true", help="write models.json and the card, upload no models")
     ap.add_argument("--no-collection", action="store_true")
+    ap.add_argument("--dry-run", nargs="?", const="out/hub", metavar="DIR",
+                    help="write models.json and README.md into DIR/<repo name> (default out/hub) instead of uploading")
     args = ap.parse_args()
+    fam = FAMILIES[args.family]
+    repo = args.repo or fam["repo"]
+    unknown = sorted(set(args.only or []) - set(fam["models"]))
+    if unknown:
+        ap.error(f"Unknown model for {args.family}: {', '.join(unknown)} (choose from {', '.join(fam['models'])})")
+    if args.dry_run is not None:
+        return dry_run(args.family, repo, Path(args.dry_run) / repo.split("/")[-1])
 
+    from huggingface_hub import HfApi                    # only for a real upload
     api = HfApi()
-    api.create_repo(args.repo, repo_type="model", exist_ok=True, private=False)
-    names = args.only or list(MODELS)
+    api.create_repo(repo, repo_type="model", exist_ok=True, private=False)
+    names = args.only or list(fam["models"])
     if not args.list_only:
         for name in names:
-            path = ROOT / MODELS[name]["build"]
+            path = ROOT / fam["models"][name]["build"]
             print(f"uploading {name}: {path.name} ({path.stat().st_size / 1e6:.0f} MB)", flush=True)
-            api.upload_file(path_or_fileobj=str(path), path_in_repo=f"{name}/{path.name}", repo_id=args.repo,
+            api.upload_file(path_or_fileobj=str(path), path_in_repo=f"{name}/{path.name}", repo_id=repo,
                             commit_message=f"Add {name}: {path.name}")
     # The list holds what is in the repository, so a model appears in the app once uploaded.
-    present = set(api.list_repo_files(args.repo))
-    models = {n: entry(n, s) for n, s in MODELS.items() if f"{n}/{Path(s['build']).name}" in present}
-    document = {"app": "neat-change-studio", "version": 1, "models": models}
-    api.upload_file(path_or_fileobj=json.dumps(document, indent=1).encode(), path_in_repo="models.json",
-                    repo_id=args.repo, commit_message="Update models.json")
-    api.upload_file(path_or_fileobj=card(args.repo, models).encode(), path_in_repo="README.md",
-                    repo_id=args.repo, commit_message="Update the model card")
-    print(f"listed: {', '.join(models) or 'nothing'}")
+    present = set(api.list_repo_files(repo))
+    doc = document(args.family, [n for n, s in fam["models"].items() if f"{n}/{Path(s['build']).name}" in present])
+    api.upload_file(path_or_fileobj=json.dumps(doc, indent=1).encode(), path_in_repo="models.json",
+                    repo_id=repo, commit_message="Update models.json")
+    api.upload_file(path_or_fileobj=fam["readme"](repo, doc["models"]).encode(), path_in_repo="README.md",
+                    repo_id=repo, commit_message="Update the model card")
+    print(f"listed: {', '.join(doc['models']) or 'nothing'}")
     if not args.no_collection:
-        owner = args.repo.split("/")[0]
+        owner = repo.split("/")[0]
         found = next((c for c in api.list_collections(owner=owner, limit=100) if c.title == COLLECTION), None)
         slug = found.slug if found else api.create_collection(COLLECTION, description=COLLECTION_ABOUT, private=False).slug
         coll = api.get_collection(slug)
-        item = next((i for i in coll.items if i.item_id == args.repo), None)
+        if found and coll.description != COLLECTION_ABOUT:
+            api.update_collection_metadata(slug, description=COLLECTION_ABOUT)
+        item = next((i for i in coll.items if i.item_id == repo), None)
         if item is None:
-            api.add_collection_item(slug, args.repo, "model", note=NOTE)
-        elif item.note != NOTE:
-            api.update_collection_item(slug, item.item_object_id, note=NOTE)
+            api.add_collection_item(slug, repo, "model", note=fam["note"])
+        elif item.note != fam["note"]:
+            api.update_collection_item(slug, item.item_object_id, note=fam["note"])
         print(f"collection: https://huggingface.co/collections/{slug}")
-    print(f"repository: https://huggingface.co/{args.repo}")
+    print(f"repository: https://huggingface.co/{repo}")
     return 0
 
 

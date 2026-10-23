@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Start the CYWS web demo on the DevKit. Extra arguments go to webapp/server.py:
+# Start the Neat Change Studio web demo on the DevKit (CYWS and DINOv2 models).
+# Extra arguments go to webapp/server.py:
 #   webapp/run.sh                  # http(s)://<board>:8098/, bf16 model (open https:// for the webcam)
-#   webapp/run.sh --model w8a16    # start with the faster build
+#   webapp/run.sh --model w8a16    # start with the faster build (or dinov2-448, zero-shot DINOv2)
 #   webapp/run.sh --port 9000
 #   webapp/run.sh --stop           # stop a running instance
 #   webapp/run.sh --daemon         # start detached, log to webapp/server.log
-#   webapp/run.sh --fetch bf16     # download a model from Hugging Face into models/ (or: all)
+#   webapp/run.sh --fetch bf16     # download a model from Hugging Face into models/ (or: w8a16, dinov2-448, all)
+#   webapp/run.sh --hub-repo dotimothy/sima-cyws   # read only these Hugging Face repos ('' = none)
 #   webapp/run.sh --list-hub       # what Hugging Face has, and what is here
 #   webapp/run.sh --verify all     # check the models here against their published SHA-256
 #   webapp/run.sh --delete w8a16   # delete a model (not the one the running demo has loaded)

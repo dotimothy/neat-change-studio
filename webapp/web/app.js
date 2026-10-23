@@ -53,7 +53,7 @@ const state = {
   result: null, mode: "overlay",
   layers: { boxes: true, heat: true, mask: false, gt: false, tiles: false },
   opts: { preset: null, levels: "0,1", thr: 0.3, register: false, tiles: "full", mask_mode: "box" },
-  hashKeys: new Set(), presets: {}, presetsLoaded: false, defaults: null,
+  hashKeys: new Set(), presets: {}, presetsLoaded: false, defaults: null, family: null, optionSpec: {},
   inflight: null, want: null, runAll: null, pairResults: {}, winCount: { "0": 1 }, lastTotal: 1200,
   hl: null, pinned: null, zoom: { s: 1, x: 0, y: 0 }, swipe: 50, suppressClick: false, modelSwitching: null, idleWaiters: [],
 };
@@ -145,22 +145,26 @@ function toggleTheme() {
 }
 
 /* ------------------------------------------------------------------ status / model */
-let modelsSig = "";
+/* The Models window (model-manager.js) owns the model list, the hub and its actions; this page
+   keeps the status pill, the hero line, the Settings card's model row and the switch overlay. */
+const MM = () => window.ModelManager || null;
+function openModels(tab = "models", model = null) {
+  const mm = MM();
+  if (mm) mm.open(tab, model);
+  else toast("The Models window didn't load. Reload the page.", "error");
+}
+const FAMILY_PILL = { cyws: "Trained", dinov2: "Zero-Shot" };
+const caps = () => (state.status && state.status.capabilities) || { per: "window", pixel_masks: true, labels: true };
+const perWord = () => (caps().per === "image" ? "Image" : "Window");
+const modelRow = (s, name) => ((s && s.models) || []).find((x) => x.name === name) || null;
+const modelTitle = (s, name) => { const m = modelRow(s, name); return (m && (m.title || m.label)) || name || ""; };
+
 async function refreshStatus() {
   try {
     const s = await api("/api/status");
     state.status = s;
+    applyFamily(s);
     renderStatus(s);
-    if (!state.presetsLoaded) {
-      state.presetsLoaded = true;
-      state.presets = s.presets || {};
-      const d = normalizeOpts(s.defaults || {});
-      state.defaults = { ...state.defaults, ...d };
-      for (const k of Object.keys(d)) if (!state.hashKeys.has(k)) state.opts[k] = d[k];
-      applyHashPreset();
-      buildPresets();
-      syncControls();
-    }
     return s;
   } catch (e) {
     state.status = null;
@@ -169,61 +173,98 @@ async function refreshStatus() {
   }
 }
 
+/* Presets, defaults and the option ranges come from the active model's family. On a change of
+   family the options are re-read; levels and threshold stay when the new family allows them. */
+function optionOk(k, v) {
+  const sp = state.optionSpec[k];
+  if (!sp) return true;
+  const choices = sp.choices || sp.values;
+  if (Array.isArray(choices)) return choices.map(String).includes(String(v));
+  const range = sp.range || (sp.min != null && sp.max != null ? [sp.min, sp.max] : null);
+  if (range) return Number(v) >= range[0] - 1e-9 && Number(v) <= range[1] + 1e-9;
+  return true;
+}
+function applyFamily(s) {
+  // nothing loaded: keep the last family's controls (presets/defaults then fall back to CYWS)
+  const fam = s.family || state.family || "cyws";
+  const first = !state.presetsLoaded;
+  if (!first && fam === state.family) return;
+  state.presetsLoaded = true;
+  state.family = fam;
+  const fi = (s.families && s.families[fam]) || {};
+  state.presets = fi.presets || s.presets || {};
+  state.optionSpec = fi.option_spec || {};
+  const d = normalizeOpts(fi.defaults || s.defaults || {});
+  const before = state.defaults || {};
+  state.defaults = { ...state.defaults, ...d };
+  if (first) {
+    for (const k of Object.keys(d)) if (!state.hashKeys.has(k)) state.opts[k] = d[k];
+    applyHashPreset();
+  } else {
+    // Levels/threshold the user moved stay (when valid); untouched ones take the new family's tuned value.
+    const same = (a, b) => (typeof a === "number" || typeof b === "number" ? Math.abs(Number(a) - Number(b)) < 1e-6 : String(a) === String(b));
+    const keep = {};
+    for (const k of ["levels", "thr"]) if (before[k] != null && !same(state.opts[k], before[k])) keep[k] = state.opts[k];
+    const preset = state.opts.preset;
+    Object.assign(state.opts, d);
+    if (preset && state.presets[preset]) Object.assign(state.opts, normalizeOpts(state.presets[preset]));   // same intent, new family's values
+    else {
+      state.opts.preset = null;
+      for (const k of Object.keys(keep)) if (optionOk(k, keep[k])) state.opts[k] = keep[k];
+    }
+  }
+  // threshold slider range from the family's option spec
+  const sp = state.optionSpec.thr, thr = $("#ctl-thr");
+  const range = sp && (sp.range || (sp.min != null && sp.max != null ? [sp.min, sp.max] : null));
+  if (range) {
+    thr.min = range[0]; thr.max = range[1];
+    state.opts.thr = clamp(Number(state.opts.thr), Number(range[0]), Number(range[1]));
+  }
+  buildPresets();
+  syncControls();
+  if (!first) writeHash();
+}
+
 function renderStatus(s) {
   const dot = $("#status-dot"), text = $("#status-text"), pill = $("#status-pill"), hero = $("#hero-model");
   const st = s ? (state.modelSwitching ? "loading" : s.state) : "error";
+  const title = s ? modelTitle(s, s.model) : "";
   dot.className = `dot ${st}`;
   let label, plain;
   if (!s) { label = plain = "Server Unreachable"; }
   else if (st === "ready") {
     const lat = s.latency && s.latency.mean_ms;
-    label = `<span class="st-long">MLA Ready · </span><b>${esc(s.model)}</b>${lat ? ` · ${lat < 10 ? lat.toFixed(1) : Math.round(lat)} ms<span class="st-long"> per Window</span>` : ""}`;
-    plain = `MLA ready, model ${s.model}`;
-  } else if (st === "error") { label = plain = `Model Error${s.error ? `: ${s.error}` : ""}`; }
-  else { label = plain = `Loading ${esc(state.modelSwitching || s.model || "the Model")}…`; }
+    label = `<span class="st-long">MLA Ready · </span><b>${esc(title)}</b>${lat ? ` · ${lat < 10 ? lat.toFixed(1) : Math.round(lat)} ms<span class="st-long"> per ${perWord()}</span>` : ""}`;
+    plain = `MLA ready, model ${title}`;
+  } else if (st === "idle") { label = plain = "No Model Loaded"; }
+  else if (st === "error") { label = plain = `Model Error${s.error ? `: ${s.error}` : ""}`; }
+  else { label = plain = `Loading ${esc(modelTitle(s, state.modelSwitching || (s.load && s.load.target) || s.model) || "the Model")}…`; }
   text.innerHTML = label;
-  pill.title = plain;
-  pill.setAttribute("aria-label", `Model status: ${plain}`);
+  pill.title = st === "idle" || st === "error" ? `${plain} · Open Models` : plain;
+  pill.setAttribute("aria-label", `Model status: ${plain}. Open Models`);
   hero.className = `hero-model ${st}`;
-  const m = s && (s.models || []).find((x) => x.name === s.model);
-  $("#hero-model-text").textContent = !s ? "Server Unreachable" : st === "ready" ? `${m ? m.label : s.model} · Ready on the MLA`
-    : st === "error" ? (/not on this board/.test(s.error || "") ? "No Model on This Board Yet — Download One in Settings" : "Model Failed to Load — Open Settings")
+  const m = s && modelRow(s, s.model);
+  const missing = s && /not on this board|missing|not found/i.test(s.error || "");
+  $("#hero-model-text").textContent = !s ? "Server Unreachable" : st === "ready" ? `${m ? m.label || title : s.model} · Ready on the MLA`
+    : st === "idle" ? (missing ? "No Model on This Board Yet — Download One in Models" : "No Model Loaded — Open Models")
+    : st === "error" ? (missing ? "No Model on This Board Yet — Download One in Models" : "Model Failed to Load — Open Models")
     : "Loading the Model onto the MLA…";
-  $("#chip-model").textContent = s && s.model ? s.model : "";
-  if (s && s.latency && s.latency.mean_ms) countTo($("#m-mla"), s.latency.mean_ms, fmtMs);
-  if (s) renderModels(s);
+  $("#chip-model").textContent = s && s.model && st === "ready" ? title : "";
+  // per window (CYWS) or per image (DINOv2)
+  $("#m-mla-label").textContent = `Per ${perWord()}`;
+  $("#mi-mla").title = caps().per === "image" ? "Mean MLA latency per image" : "Mean MLA latency per 256×256 window";
+  if (s && s.latency && s.latency.mean_ms && st === "ready") countTo($("#m-mla"), s.latency.mean_ms, fmtMs);
+  else if (st !== "ready") setText($("#m-mla"), "—");
+  // the Settings card's model row
+  const row = $("#model-row"), fam = s && st === "ready" ? s.family : null;
+  row.className = `model-row ${st}`;
+  $("#mr-name").textContent = !s ? "Server Unreachable" : st === "ready" ? title : st === "loading" ? `Loading ${modelTitle(s, state.modelSwitching || (s.load && s.load.target) || s.model)}…`
+    : st === "idle" ? "No Model Loaded" : "Model Error";
+  const fp = $("#mr-family");
+  fp.hidden = !fam;
+  if (fam) { fp.textContent = FAMILY_PILL[fam] || cap(fam); fp.className = `fam-pill${fam === "dinov2" ? " zs" : ""}`; }
+  syncControls();
   updateComposer();
-}
-
-/* Models: the ones on the board, plus the catalog on Hugging Face (status.models and
-   /api/hub). A model on the board loads when picked; one that isn't offers a download,
-   with progress, cancel and resume, like Neat GenAI Studio and Decision Studio. */
-const fmtMB = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${Math.round(b / 1e6)} MB`);
-const fmtLeft = (sec) => (sec == null ? "" : sec >= 90 ? `${Math.round(sec / 60)} min left` : `${Math.max(1, sec)} s left`);
-let hubTimer = null;
-
-async function refreshHub() {
-  clearTimeout(hubTimer);
-  try {
-    state.hub = await api("/api/hub");
-  } catch (e) {
-    state.hub = state.hub || { error: e.message, models: {} };
-  }
-  modelsSig = "";
-  if (state.status) renderModels(state.status);
-  const busy = Object.values((state.hub && state.hub.models) || {}).some((m) => m.state === "downloading");
-  hubTimer = setTimeout(refreshHub, busy ? 800 : 60000);
-  const downloading = Object.keys((state.hub && state.hub.models) || {}).find((n) => state.hub.models[n].state === "downloading");
-  if (state.hubWasBusy && !busy) {                     // a download finished: the model list changed
-    const name = state.hubWasBusy, m = state.hub.models[name];
-    await refreshStatus();
-    if (m && m.state === "on_board") {
-      toast(`${name} is on the board`, "ok", 3000);
-      // nothing loaded yet (a fresh board): load what just arrived
-      if (state.status && state.status.state !== "ready" && !state.modelSwitching) switchModel(name);
-    }
-  }
-  state.hubWasBusy = downloading || null;
 }
 
 /* A styled yes/no for steps that can't be undone. Resolves true on the confirm button. */
@@ -238,126 +279,6 @@ function confirmBox({ title, body, ok }) {
     dlg.showModal();
     $("#confirm-cancel").focus();                       // the safe choice has the focus
   });
-}
-
-/* The model manager's actions. Delete and Re-download ask first; Verify checks the file's
-   SHA-256 (a second or so) and says how it went. */
-async function hubAction(action, name) {
-  const m = ((state.hub && state.hub.models) || {})[name] || {};
-  const local = ((state.status && state.status.models) || []).find((x) => x.name === name) || {};
-  const size = m.on_disk_bytes || m.bytes;
-  if (action === "delete") {
-    const ok = await confirmBox({
-      title: `Delete ${name}?`,
-      body: `This removes ${m.file || "its file"}${size ? ` (${fmtMB(size)})` : ""} from ${state.hub && state.hub.directory || "the models folder"}.`
-        + (m.url || m.bytes ? " You can download it again from Hugging Face." : " It is not on Hugging Face, so it can't be downloaded again here."),
-      ok: "Delete" });
-    if (!ok) return;
-  } else if (action === "redownload" && (m.state === "on_board" || local.available)) {
-    const ok = await confirmBox({
-      title: `Re-download ${name}?`,
-      body: `This fetches a fresh copy (${fmtMB(m.bytes)}) from Hugging Face. The file on the board stays in use until the new one has arrived and passed its checksum.`,
-      ok: "Re-download" });
-    if (!ok) return;
-  }
-  state.hubBusy = { name, action };
-  modelsSig = "";
-  if (state.status) renderModels(state.status);
-  try {
-    const out = await postJSON(`/api/hub/${action}`, { name });
-    state.hub = out;
-    if (action === "download" || action === "redownload") toast(`Downloading ${name} from Hugging Face`, "info", 2500);
-    else if (action === "delete") { toast(`Deleted ${name}`, "ok", 3000); await refreshStatus(); }
-    else if (action === "verify") {
-      if (out.verified && out.verified.ok) toast(`${name} matches the published file`, "ok", 3000);
-      else toast(`${name} doesn't match the published file. Re-download it.`, "error");
-    }
-  } catch (e) {
-    toast(e.message, "error");
-  } finally {
-    state.hubBusy = null;
-  }
-  refreshHub();
-}
-
-function renderModels(s) {
-  const hub = state.hub || { models: {} };
-  const sig = JSON.stringify([s.model, s.state, state.modelSwitching, s.models, hub, state.hubBusy]);
-  if (sig === modelsSig) return;
-  modelsSig = sig;
-  const names = [...new Set([...(s.models || []).map((m) => m.name), ...Object.keys(hub.models || {})])];
-  $("#models").innerHTML = names.map((name) => {
-    const local = (s.models || []).find((m) => m.name === name) || {};
-    const remote = (hub.models || {})[name];
-    const onBoard = !!local.available;
-    const on = name === (state.modelSwitching || s.model);
-    const loading = on && (state.modelSwitching || s.state === "loading");
-    const [, ...rest] = (local.label || name).split("·");
-    const about = remote && remote.about ? remote.about : rest.join("·").trim() || "Compiled for the MLA";
-    const acc = (remote && remote.accuracy) || {};
-    const stats = remote ? [remote.latency_ms ? `${remote.latency_ms} ms per Window` : null,
-      acc.changes_found ? `${acc.changes_found} Found` : null, acc.pixel_f1 != null ? `F1 ${acc.pixel_f1.toFixed(3)}` : null,
-      fmtMB(remote.bytes)].filter(Boolean) : [];
-    if (remote && remote.verified === true && onBoard) stats.push("SHA-256 ✓");
-    let badge = "", action = "";
-    if (on && !loading) badge = `<span class="mm-badge on">Loaded</span>`;
-    else if (loading) badge = `<span class="mm-badge">Loading…</span>`;
-    else if (onBoard && remote && remote.state === "damaged") badge = `<span class="mm-badge warn" title="The file doesn't match the published one">Damaged</span>`;
-    else if (onBoard) badge = `<span class="mm-badge">On Board</span>`;
-    const busy = state.hubBusy && state.hubBusy.name === name ? state.hubBusy.action : "";
-    if (remote && remote.state === "downloading") {
-      const pr = remote.progress || {};
-      action = `<div class="mm-dl">${remote.replacing ? `<span class="mm-dl-row" style="margin:0">Re-downloading · the copy on the board stays in use until this one is checked</span>` : ""}<div class="mm-bar"><i style="width:${(100 * (pr.fraction || 0)).toFixed(1)}%"></i></div>
-        <div class="mm-dl-row"><span>${Math.round(100 * (pr.fraction || 0))}% · ${fmtMB(pr.done_bytes || 0)} of ${fmtMB(remote.bytes)}${pr.bytes_per_second ? ` · ${fmtMB(pr.bytes_per_second)}/s` : ""}${pr.seconds_left != null ? ` · ${fmtLeft(pr.seconds_left)}` : ""}</span>
-        <button type="button" class="mm-act ghost" data-act="cancel">Cancel</button></div></div>`;
-    } else if (remote && !onBoard) {
-      const part = remote.partial_bytes || 0;
-      action = `${remote.error ? `<p class="mm-err">${esc(remote.error)}</p>` : ""}<div class="mm-dl-row">
-        <button type="button" class="mm-act" data-act="download"><svg><use href="#i-download"/></svg>${part ? `Continue · ${fmtMB(part)} of ${fmtMB(remote.bytes)}` : `Download · ${fmtMB(remote.bytes)}`}</button>
-        ${part ? `<button type="button" class="mm-act ghost" data-act="discard">Discard</button>` : ""}</div>`;
-    }
-    // On the board: the manager's actions. The loaded model can't be deleted (load another first).
-    if (onBoard && !(remote && remote.state === "downloading")) {
-      const damaged = remote && remote.state === "damaged";
-      const locked = on || !!state.modelSwitching;
-      const btn = (act, icon, label, extra = "") => {
-        const doing = busy === act;
-        const cls = act === "delete" ? "danger" : act === "redownload" && damaged ? "primary" : "";
-        return `<button type="button" class="mm-mini ${cls} ${doing ? "busy" : ""}" data-act="${act}" ${extra}
-          ${busy ? "disabled" : ""}><svg><use href="#${doing ? "i-refresh" : icon}"/></svg>${doing ? { verify: "Checking…", delete: "Deleting…", redownload: "Starting…" }[act] : label}</button>`;
-      };
-      action = `${damaged || (remote && remote.error) ? `<p class="mm-err">${esc((remote && remote.error) || "The file on the board is not the published one. Re-download it.")}</p>` : ""}
-        <div class="mm-manage" role="group" aria-label="Manage ${esc(name)}">
-        ${remote ? btn("verify", "i-shield", "Verify", `title="Check the file against its published SHA-256"`) : ""}
-        ${remote ? btn("redownload", "i-refresh", "Re-download", `title="Fetch a fresh copy from Hugging Face"`) : ""}
-        ${btn("delete", "i-trash", "Delete", locked ? `disabled title="${on ? "Loaded on the MLA: load another model before deleting this one" : "Wait for the model switch"}"`
-          : `title="Delete ${esc(name)} from the board"`)}
-        </div>`;
-    }
-    const pick = onBoard && !on && !state.modelSwitching;
-    const role = onBoard ? `role="radio" aria-checked="${on}" tabindex="${pick || on ? 0 : -1}"`
-      : `role="group" aria-label="${esc(name)}: not on this board yet"`;
-    return `<div class="model-opt ${loading ? "loading" : ""} ${onBoard ? "" : "remote"}" data-name="${esc(name)}" data-onboard="${onBoard ? 1 : 0}"
-        ${role} title="${pick ? `Load ${esc(name)} on the MLA` : ""}">
-      <span class="mm-dot"></span><span class="mm-body">
-        <span class="mm-top"><span class="mm-name">${esc(name)}</span>${remote && remote.precision ? `<span class="mm-prec">${esc(remote.precision)}</span>` : ""}${badge}</span>
-        <span class="mm-sub">${esc(about)}</span>
-        ${stats.length ? `<span class="mm-stats">${stats.map((x) => `<span>${esc(x)}</span>`).join(" · ")}</span>` : ""}
-        ${action}</span></div>`;
-  }).join("");
-  const src = $("#models-src");
-  const store_ = $("#models-storage");
-  if (hub.used_bytes != null && hub.free_bytes) {
-    const used = hub.used_bytes, total = used + hub.free_bytes;
-    store_.hidden = false;
-    store_.innerHTML = `<div class="mm-storage-row"><span><b>Storage</b> · ${hub.model_count || 0} Model${hub.model_count === 1 ? "" : "s"} · ${fmtMB(used)}${hub.partial_count ? ` + ${hub.partial_count} Partial` : ""}</span><span>${fmtMB(hub.free_bytes)} Free</span></div>
-      <div class="mm-bar" role="img" aria-label="Models use ${fmtMB(used)}, ${fmtMB(hub.free_bytes)} free"><i style="width:${Math.max(used ? 1 : 0, 100 * used / total).toFixed(1)}%"></i></div>`;
-  } else store_.hidden = true;
-  if (hub.repo) {
-    src.innerHTML = `${hub.error ? `<span class="mm-err">${esc(hub.error)}</span> ` : ""}Models download from Hugging Face:
-      <a href="${esc(hub.page)}" target="_blank" rel="noopener">${esc(hub.repo)}<svg><use href="#i-external"/></svg></a>${hub.collection
-        ? ` · <a href="${esc(hub.collection)}" target="_blank" rel="noopener">Collection<svg><use href="#i-external"/></svg></a>` : ""}${hub.directory ? `<br>Folder: <code>${esc(hub.directory)}</code>` : ""}`;
-  } else src.textContent = "";
 }
 
 /* ------------------------------------------------------------------ side panel */
@@ -444,14 +365,17 @@ function mswHide() {
   setTimeout(() => { el.hidden = true; el.classList.remove("out"); }, mq.still.matches ? 0 : 340);
 }
 
+/* Called by the Models window (Load / Switch to This). Resolves when the model is ready; throws
+   when the switch failed, after the overlay has shown why. */
 async function switchModel(name) {
-  if (!state.status || name === state.status.model || state.modelSwitching) return;
+  if (!state.status) await refreshStatus();
+  if (!state.status || (name === state.status.model && state.status.state === "ready") || state.modelSwitching) return;
   if (cam.live) stopLive();
-  const from = state.status.state === "ready" ? state.status.model : null;
+  const from = state.status.state === "ready" ? modelTitle(state.status, state.status.model) : null;
+  const to = modelTitle(state.status, name);
   state.modelSwitching = name;
-  $("#model-err").hidden = true;
   renderStatus(state.status);
-  mswShow(from, name);
+  mswShow(from, to);
   // poll the stage while the switch request is open (it returns when the model is ready)
   let done = false;
   const poll = (async () => {
@@ -485,16 +409,13 @@ async function switchModel(name) {
   done = true;
   await poll;
   state.modelSwitching = null;
-  modelsSig = "";
   if (err) {
     mswFail(err.message);
-    $("#model-err").textContent = err.message;
-    $("#model-err").hidden = false;
     await refreshStatus();
-    return;
+    throw err;
   }
   mswStage("ready", (performance.now() - msw.t0) / 1000, null);
-  $("#msw-title").textContent = `${name} Is Ready on the MLA`;
+  $("#msw-title").textContent = `${to} Is Ready on the MLA`;
   await refreshStatus();
   await sleep(mq.still.matches ? 400 : 1100);
   mswHide();
@@ -697,7 +618,9 @@ function updateComposer() {
   else if (bothFilled() || (s.before && s.before.kind === "upload")) info.innerHTML = `<b>Your Photos</b> — Ready to Detect`;
   else if (s.before || s.after) info.innerHTML = `Now Add the <b>${s.before ? "After" : "Before"}</b> Photo`;
   else info.textContent = "Pick a test pair, or add a before and an after photo.";
-  btn.title = !ready ? "Waiting for the Model" : bothFilled() ? "Detect Changes (Enter)" : "Add Both Photos First";
+  const idle = state.status && state.status.state === "idle" && !state.modelSwitching;
+  if (idle && !state.runAll && !cam.live) info.innerHTML = `No model is loaded. <button type="button" class="ci-link" data-open-models>Load a model in Models</button>`;
+  btn.title = idle ? "Load a model in Models" : !ready ? "Waiting for the Model" : bothFilled() ? "Detect Changes (Enter)" : "Add Both Photos First";
 }
 
 const picker = { role: null };
@@ -1315,7 +1238,9 @@ function syncControls() {
   $("#ctl-register").checked = o.register;
   $("#ctl-gated").checked = o.tiles === "gated";
   $("#ctl-diff").checked = o.mask_mode === "diff";
-  $("#ctl-diff").disabled = !o.register;
+  const masks = caps().pixel_masks !== false;
+  $("#ctl-diff").disabled = !o.register || !masks;
+  $("#ctl-diff").closest(".switch-row").title = masks ? "" : "DINOv2's change mask is already per pixel";
   $("#set-meta").innerHTML = `${LEVEL_NAME[o.levels] || o.levels} · <b>${Number(o.thr).toFixed(2)}</b>${o.register ? " · Aligned" : ""}`;
 }
 let thrTimer = null;
@@ -1336,6 +1261,11 @@ function requestOptions() {
 /* ------------------------------------------------------------------ running */
 function requestRun() {
   if (!state.current) return;
+  // nothing on the MLA: the composer hint already says to load a model, so don't fire a run the server refuses
+  if (state.status && state.status.state === "idle") {
+    if (!state.inflight) for (const res of state.idleWaiters.splice(0)) res();
+    return;
+  }
   state.want = { id: state.current.id, kind: state.current.kind, opts: requestOptions() };
   if (!state.inflight) pump();
 }
@@ -1856,6 +1786,12 @@ function setDetsExpanded(on) {
   more.querySelector("span").textContent = on ? "Show Fewer" : `Show All ${more.dataset.n || ""}`.trim();
 }
 
+/* Where a detection came from: CYWS names the branch and window level, DINOv2 the photo or tile. */
+function resultFamily(r) { return r.family || (r.config && r.config.family) || state.family || "cyws"; }
+function detWhere(r, d) {
+  if (resultFamily(r) === "dinov2") return !d.level ? "Whole Photo" : d.window_id > 0 ? `Tile ${d.window_id}` : "Tile";
+  return `${cap(d.branch || "after")} Branch · Level ${d.level}`;
+}
 function detRows(r, idx) {
   const f = Array.isArray(r.scale) ? r.scale[0] : (r.scale || 1);
   return idx.map((i) => {
@@ -1865,7 +1801,7 @@ function detRows(r, idx) {
     const w = Math.round((x2 - x1) * f), h = Math.round((y2 - y1) * f);
     return `<li class="det-row" data-i="${i}" style="--c: var(--${lab})" tabindex="0" aria-label="${LABEL_TEXT[lab]}, score ${d.score.toFixed(2)}">
       <i class="sw ${lab}"></i>
-      <span class="dr-main"><span class="dr-label">${LABEL_TEXT[lab]}</span><span class="dr-meta">${esc(cap(d.branch))} Branch · Level ${d.level} · ${w}×${h} px</span></span>
+      <span class="dr-main"><span class="dr-label">${LABEL_TEXT[lab]}</span><span class="dr-meta">${esc(detWhere(r, d))} · ${w}×${h} px</span></span>
       <span class="dr-score"><b>${d.score.toFixed(2)}</b><span class="dr-bar"><i style="width:${Math.round(100 * d.score)}%"></i></span></span></li>`;
   }).join("");
 }
@@ -1901,7 +1837,10 @@ function renderTimings(r) {
   $("#tlist").innerHTML = rows.map((row) => li(row) + (row[0] === "stream" ? sub.map((k) => li([k, t[k]], "sub")).join("") : "")).join("")
     + extra.map((row) => li(row)).join("");
   const lat = state.status && state.status.latency && state.status.latency.mean_ms;
-  $("#t-note").textContent = `Model ${r.model}${lat ? ` · MLA ≈ ${lat < 10 ? lat.toFixed(1) : Math.round(lat)} ms per 256×256 window` : ""}. Cropping the next window overlaps the MLA, so the indented rows overlap "Preprocess + MLA".`;
+  const ms = lat ? `${lat < 10 ? lat.toFixed(1) : Math.round(lat)} ms` : "";
+  $("#t-note").textContent = resultFamily(r) === "dinov2"
+    ? `Model ${modelTitle(state.status, r.model)}${ms ? ` · MLA ≈ ${ms} per image` : ""}. Each photo and each tile is one image on the MLA.`
+    : `Model ${modelTitle(state.status, r.model)}${ms ? ` · MLA ≈ ${ms} per 256×256 window` : ""}. Cropping the next window overlaps the MLA, so the indented rows overlap "Preprocess + MLA".`;
 }
 
 function renderSummary(r) {
@@ -1927,6 +1866,7 @@ function resetChips() {
 async function runAll() {
   if (state.runAll) { state.runAll.stop = true; return; }
   if (!state.pairs.length) { toast("The test set is empty", "error"); return; }
+  if (state.status && state.status.state === "idle") { toast("No model is loaded. Load one in Models.", "error"); return; }
   if (!state.status || state.status.state !== "ready") { toast("The model is not ready yet", "error"); return; }
   if (cam.live) stopLive();
   state.want = null;
@@ -1999,7 +1939,9 @@ function readHash(opts) {
   hashReading = true;                              // setMode() must not rewrite the link while it is being read
   try { return readHashInner(opts); } finally { hashReading = false; }
 }
+const isModelsHash = () => location.hash === "#models" || location.hash.startsWith("#models=");
 function readHashInner({ reset = false } = {}) {
+  if (isModelsHash()) return null;                   // the Models window's link, not a view
   const h = new URLSearchParams(location.hash.slice(1));
   const o = state.opts;
   const keys = state.hashKeys = new Set();
@@ -2024,7 +1966,7 @@ function readHashInner({ reset = false } = {}) {
 }
 let hashReady = false;
 function writeHash() {
-  if (!hashReady || hashReading) return;
+  if (!hashReady || hashReading || isModelsHash()) return;
   const o = state.opts, p = new URLSearchParams();
   if (state.current && state.current.kind === "pair") p.set("pair", state.current.id);
   p.set("levels", o.levels);
@@ -2150,17 +2092,23 @@ function bind() {
     $("#btn-vfs").classList.toggle("is-fs", fs === $("#viewer"));
     setTimeout(() => { layoutOverlay(); applySwipe(); }, 60);
   });
-  $("#status-pill").addEventListener("click", () => openSettings());
-  $("#hero-model").addEventListener("click", () => openSettings());
+  // the status pill, the hero line and the header's chip button open the Models window
+  const modelsTab = () => (state.status && !(state.status.models || []).some((m) => m.available) ? "add" : "models");
+  $("#status-pill").addEventListener("click", () => openModels(modelsTab()));
+  $("#hero-model").addEventListener("click", () => openModels(modelsTab()));
+  $("#btn-models").addEventListener("click", () => openModels());
+  $("#btn-manage-models").addEventListener("click", () => openModels());
+  $("#composer-info").addEventListener("click", (e) => { if (e.target.closest("[data-open-models]")) openModels(modelsTab()); });
   $("#btn-menu").addEventListener("click", () => {
     if (mq.phone.matches) {
       openSheet("Neat Change Studio", [
         { icon: appIsFs() ? "i-shrink" : "i-expand", label: appIsFs() ? "Exit Full Screen" : "Full Screen", run: toggleAppFullscreen },
         { icon: effectiveTheme() === "dark" ? "i-sun" : "i-moon", label: effectiveTheme() === "dark" ? "Light Mode" : "Dark Mode", run: toggleTheme },
+        { icon: "i-chip", label: "Models", run: () => openModels() },
         { icon: "i-home", label: "Back to Start", run: goHome },
         { icon: "i-link", label: "Copy a Link to This View", run: copyLink },
         { icon: "i-play", label: "Run the Whole Test Set", run: () => { setTab("results"); runAll(); } },
-      ], `CYWS (Sachdeva &amp; Zisserman, WACV 2023; Apache-2.0) · Powered by <strong>Neat</strong> · © 2026 SiMa.ai, Inc.`);
+      ], `CYWS (Sachdeva &amp; Zisserman, WACV 2023) and DINOv2 (Meta), Apache-2.0 · Powered by <strong>Neat</strong> · © 2026 SiMa.ai, Inc.`);
     } else setDrawer(!$("#workspace").classList.contains("rail-open"));
   });
   $("#scrim").addEventListener("click", () => setDrawer(false));
@@ -2262,21 +2210,6 @@ function bind() {
   });
   $("#ctl-gated").addEventListener("change", (e) => { state.opts.tiles = e.target.checked ? "gated" : "full"; state.opts.preset = null; optionsChanged(); });
   $("#ctl-diff").addEventListener("change", (e) => { state.opts.mask_mode = e.target.checked ? "diff" : "box"; optionsChanged(); });
-  $("#models").addEventListener("click", (e) => {
-    const row = e.target.closest(".model-opt");
-    if (!row) return;
-    const act = e.target.closest("[data-act]");
-    if (act) { if (!act.disabled) hubAction(act.dataset.act, row.dataset.name); return; }
-    if (e.target.closest(".mm-manage, .mm-dl, .mm-dl-row, .mm-err")) return;   // around the buttons: not a pick
-    if (row.dataset.onboard === "1") switchModel(row.dataset.name);
-  });
-  $("#models").addEventListener("keydown", (e) => {
-    const row = e.target.closest(".model-opt");
-    if (row && e.target === row && (e.key === "Enter" || e.key === " ")) {
-      e.preventDefault(); e.stopPropagation();
-      if (row.dataset.onboard === "1") switchModel(row.dataset.name);
-    }
-  });
   $("#btn-settings").addEventListener("click", toggleSettings);
   $("#rail-toggle").addEventListener("click", () => setRailCollapsed(!railCollapsed()));
 
@@ -2330,6 +2263,7 @@ function bind() {
   // keyboard
   document.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (MM() && MM().isOpen()) return;                 // the Models window has its own keys
     if (e.key === "Escape") {
       if ($("#confirm").open) return;                  // the dialog closes itself
       if (!$("#mswitch").hidden && !$("#msw-close").hidden) { mswHide(); return; }
@@ -2343,7 +2277,7 @@ function bind() {
       return;
     }
     const el = e.target;
-    if (el.closest && el.closest("input, textarea, select, [contenteditable], .sheet, .cam, .mswitch")) return;
+    if (el.closest && el.closest("input, textarea, select, [contenteditable], .sheet, .cam, .mswitch, .mmgr")) return;
     if (["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key)) {
       if (el !== document.body && el.closest && el.closest("button, [role=slider], [tabindex]") && !el.closest("#hero, .viewer")) return;
       if (!$("#pairs").offsetParent) return;
@@ -2363,6 +2297,7 @@ function bind() {
   ro.observe($("#frame-after"));
   new ResizeObserver(() => requestAnimationFrame(syncStrip)).observe($("#tb-scroll"));
   addEventListener("hashchange", () => {
+    if (isModelsHash()) return;                       // #models belongs to the Models window
     const before = JSON.stringify(requestOptions());
     const pair = readHash({ reset: true });
     syncControls(); applyLayers();
@@ -2376,7 +2311,6 @@ function openSettings() {
   if (mq.phone.matches) { setTab("settings"); return; }
   if (mq.tablet.matches) setDrawer(true);
   else if (railCollapsed()) setRailCollapsed(false);
-  refreshHub();
   const card = $('.card[data-card="settings"]');
   setCard(card, false);
   card.scrollIntoView({ block: "start", behavior: mq.still.matches ? "auto" : "smooth" });
@@ -2386,7 +2320,7 @@ function openSettings() {
 async function waitReady() {
   for (let i = 0; i < 180; i++) {
     const s = state.status;
-    if (s && (s.state === "ready" || s.state === "error")) return s;
+    if (s && (s.state === "ready" || s.state === "error" || s.state === "idle")) return s;
     await sleep(1000);
     await refreshStatus();
   }
@@ -2405,9 +2339,13 @@ async function waitReady() {
   applyLayers();
   renderSlots();
   renderSuggest();
+  if (MM()) {
+    MM().configure({ switchModel, confirm: confirmBox, toast, getStatus: () => state.status });
+    addEventListener("models-changed", () => refreshStatus());
+    MM().refresh();                                  // notices a download already running
+  }
   await refreshStatus();
   await loadPairs();
-  refreshHub();
   hashReady = true;
   setInterval(() => { if (!document.hidden) refreshStatus(); }, 4000);
   if (pair && state.pairs.some((p) => p.id === pair)) {

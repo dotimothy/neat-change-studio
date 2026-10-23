@@ -400,3 +400,28 @@ def test_setup_remembers_models_dir_and_names_old_models(board, tmp_path):
     assert "not used any more" in out and "mv " in out
     r = run([str(app / "setup.sh"), "--no-prompt", "--models-dir", "default"], env=env)
     assert r.returncode == 0 and not (app / ".models-dir").exists()
+
+
+def test_setup_accepts_dinov2_and_passes_names_to_fetch(board, tmp_path):
+    """dinov2-448 is a valid name for --models / CYWS_MODELS; the list goes to webapp/run.sh --fetch."""
+    app, _, env = board
+    seen = tmp_path / "fetch-args"
+    stub = app / "webapp/run.sh"
+    stub.write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "{seen}"\n')
+    stub.chmod(0o755)
+    models = tmp_path / "models"
+    r = run([str(app / "setup.sh")], env=dict(env, CYWS_MODELS="dinov2-448,bf16", CYWS_MODELS_DIR=str(models)))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert seen.read_text().split() == ["--models", str(models), "--fetch", "dinov2-448", "bf16"]
+    assert "dinov2-448" in run([BASH, str(ROOT / "setup.sh"), "--help"]).stdout
+
+
+def test_cli_never_picks_a_dinov2_mpk(tmp_path):
+    """run.sh (the CYWS CLI) falls back only to cyws_*_mpk.tar.gz, never to another family's MPK."""
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / "dinov2_vits14_reg_448_bf16_mpk.tar.gz").write_bytes(b"dinov2")
+    r = run([BASH, str(ROOT / "run.sh"), "--mode", "static", "--before", "b.jpg", "--after", "a.jpg"],
+            env={"CYWS_MODELS_DIR": str(models), "PYNEAT_VENV": str(tmp_path / "none")}, cwd=tmp_path)
+    assert r.returncode == 1
+    assert "No CYWS model" in r.stderr and "dinov2" not in r.stdout

@@ -71,8 +71,8 @@ Usage:
 Sets up Neat Change Studio on the Modalix DevKit, in order:
   1. checks the pyneat venv and installs the Python packages it is missing
      (numpy, opencv-python-headless with SIFT, pillow, flask)
-  2. downloads a model from Hugging Face (dotimothy/sima-cyws) into the models
-     directory (default /media/nvme/models/cyws, shared by every install)
+  2. downloads a model from Hugging Face (dotimothy/sima-cyws, dotimothy/sima-dinov2)
+     into the models directory (default /media/nvme/models/cyws, shared by every install)
   3. makes the self-signed certificate the web demo serves HTTPS with
   4. adds the 'neat-change' shell alias for webapp/run.sh, and a desktop icon
      when the board has a desktop
@@ -84,8 +84,8 @@ Options:
                         missing (a missing model is only reported).
   --check               At the end, load the model on the MLA and run one
                         synthetic pair (refuses while another MLA app runs)
-  --models LIST         Models to download: bf16, w8a16, all or none
-                        (same as CYWS_MODELS; LIST may be bf16,w8a16)
+  --models LIST         Models to download: bf16, w8a16, dinov2-448, all or none
+                        (same as CYWS_MODELS; LIST may be bf16,dinov2-448)
   --fetch[=LIST]        Same as --models; plain --fetch means bf16
   --models-dir DIR      Keep the models in DIR, and remember it (in .models-dir)
                         for run.sh, the web demo and the alias. 'default' goes
@@ -101,7 +101,7 @@ Environment:
   PYNEAT_VENV           The pyneat venv. Default: ~/pyneat
   CYWS_MODELS_DIR       The models directory for this run (see --models-dir).
   CYWS_MODELS           bf16 (119 MB, most accurate), w8a16 (72 MB, faster),
-                        all or none. If unset: in a terminal, setup asks
+                        dinov2-448 (77 MB, zero-shot DINOv2), all or none. If unset: in a terminal, setup asks
                         (default bf16) when there is no model yet; without
                         a terminal it downloads none.
   CREATE_ALIAS          1 or 0: add 'neat-change' to the shell's startup files.
@@ -276,6 +276,7 @@ if [[ "$(cd "$HERE" && pwd -P)/models" != "$(cd "$MODELS_DIR" 2>/dev/null && pwd
   fi
 fi
 have_models() { local m=("$MODELS_DIR"/*_mpk.tar.gz); ((${#m[@]})); }
+have_cyws_models() { local m=("$MODELS_DIR"/cyws_*_mpk.tar.gz); ((${#m[@]})); }   # what run.sh (the CYWS CLI) can use
 list_models() { local m; for m in "$MODELS_DIR"/*_mpk.tar.gz; do ok "Model: ${C_DIM}$m${C_RESET} ($(du -h "$m" | cut -f1))"; done; }
 
 if ((CHECK_ONLY)); then
@@ -285,10 +286,11 @@ else
     if have_models; then
       MODELS=none
     elif ((TTY)); then
-      info "The compiled models are on Hugging Face (dotimothy/sima-cyws):"
-      info "  ${C_BOLD}bf16${C_RESET}   119 MB, the most accurate (default)"
-      info "  ${C_BOLD}w8a16${C_RESET}   72 MB, faster"
-      MODELS="$(ask "Download which model? [bf16/w8a16/all/none] (bf16)" bf16)"
+      info "The compiled models are on Hugging Face (dotimothy/sima-cyws, dotimothy/sima-dinov2):"
+      info "  ${C_BOLD}bf16${C_RESET}         119 MB, CYWS, the most accurate (default)"
+      info "  ${C_BOLD}w8a16${C_RESET}         72 MB, CYWS, faster"
+      info "  ${C_BOLD}dinov2-448${C_RESET}    77 MB, DINOv2, zero-shot (no change-detection training)"
+      MODELS="$(ask "Download which model? [bf16/w8a16/dinov2-448/all/none] (bf16)" bf16)"
     else
       MODELS=none
       info "No terminal to ask on and CYWS_MODELS is not set: no model downloaded."
@@ -296,9 +298,9 @@ else
   fi
   MODELS="${MODELS,,}"; MODELS="${MODELS//,/ }"
   bad=""
-  for m in $MODELS; do [[ "$m" =~ ^(bf16|w8a16|all|none)$ ]] || bad+=" $m"; done
+  for m in $MODELS; do [[ "$m" =~ ^(bf16|w8a16|dinov2-448|all|none)$ ]] || bad+=" $m"; done
   if [[ -n "$bad" ]]; then
-    fail_step "Unknown model:${bad} (choose bf16, w8a16, all or none)"
+    fail_step "Unknown model:${bad} (choose bf16, w8a16, dinov2-448, all or none)"
   elif [[ -n "${MODELS// /}" && " $MODELS " != *" none "* ]]; then
     step "Downloading from Hugging Face: $MODELS"
     # shellcheck disable=SC2086
@@ -312,7 +314,7 @@ else
     list_models
   else
     info "No model in $MODELS_DIR yet. Download one with ${C_BOLD}CYWS_MODELS=bf16 ./setup.sh${C_RESET},"
-    info "${C_BOLD}webapp/run.sh --fetch bf16${C_RESET}, or in the web demo under Settings → Model."
+    info "${C_BOLD}webapp/run.sh --fetch bf16${C_RESET}, or in the web demo under Models."
   fi
 fi
 [[ -d "$HERE/data/testCYWS" ]] && info "Test pairs: $HERE/data/testCYWS" \
@@ -483,8 +485,8 @@ mla_check() {
     printf '%s\n' "$busy" >&2
     return 0
   fi
-  if ! have_models; then
-    fail_step "No model in $MODELS_DIR to check; download one first (CYWS_MODELS=bf16 ./setup.sh)."
+  if ! have_cyws_models; then
+    fail_step "No CYWS model in $MODELS_DIR to check (the check runs the CYWS CLI); download one first (CYWS_MODELS=bf16 ./setup.sh)."
     return 0
   fi
   CHECK_DIR="$(mktemp -d)" || { fail_step "MLA check: mktemp failed."; return 0; }
@@ -556,7 +558,7 @@ else
     [[ -f "$f" ]] && grep -qxF "$(alias_line)" "$f" && { run="$ALIAS_NAME"; break; }
   done < <(alias_files)
 fi
-have_models || info "Download a model first: ${C_BOLD}CYWS_MODELS=bf16 ./setup.sh${C_RESET} (or from the web demo, Settings → Model)."
+have_models || info "Download a model first: ${C_BOLD}CYWS_MODELS=bf16 ./setup.sh${C_RESET} (or from the web demo, under Models)."
 printf '\n   %sNext%s\n' "${C_BOLD}" "${C_RESET}"
 ((ALIAS_ADDED)) && info "${ALIAS_NAME} works in a new shell (or after ${C_BOLD}source ~/.bashrc${C_RESET}); here, use $(printf '%q' "$HERE/webapp/run.sh")."
 printf '   %-52s %s\n' "${run}" "# web demo: https://${ip}:${PORT}/ (and http://)"

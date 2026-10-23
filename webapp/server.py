@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""CYWS change-detection web demo on the SiMa Modalix MLA.
+"""Neat Change Studio: change-detection web demo on the SiMa Modalix MLA.
 
-Pick a before/after pair from the test set (or upload your own two photos);
-CYWS runs on the MLA through pyneat (Model -> Graph -> Run) via the app in
-../app, and the page shows the detected changes on the "after" image together
+Pick a before/after pair from the test set (or upload your own two photos); the
+loaded model runs on the MLA through pyneat via the app in ../app: CYWS (trained,
+per 256x256 window pair) or DINOv2 (zero-shot, per 448x448 image; app/families.py
+says how each family loads and runs). The page shows the detected changes on the "after" image together
 with the heat map, the change mask, the ground truth (when the pair has one),
 per-stage timings and accuracy against the ground truth.
 
@@ -45,10 +46,11 @@ from werkzeug.serving import make_server
 ROOT = Path(__file__).resolve().parent.parent          # repo root, or /media/nvme/cyws on the board
 WEB = Path(__file__).resolve().parent / "web"
 sys.path.insert(0, str(ROOT / "app"))
-import backends  # noqa: E402
+import backends  # noqa: E402,F401 - families.py builds backends through it (tests patch server.backends)
+import families  # noqa: E402
 import ingestion  # noqa: E402
 import post_process  # noqa: E402
-from app import CywsApp  # noqa: E402
+from app import CywsApp  # noqa: E402,F401 - kept for callers that import it from here
 from common import AppConfig, CywsError  # noqa: E402
 from dataset_loader import discover_pairs, static_pair  # noqa: E402
 
@@ -61,9 +63,13 @@ MAX_RESULTS = 24          # rendered results kept in memory
 MAX_DECODED = 6           # decoded pairs kept, so re-runs with new settings skip the JPEG decode
 MAX_UPLOADS = 20
 MODELS = OrderedDict([
-    ("bf16", {"file": "cyws_bf16_mpk.tar.gz", "label": "bf16 · Most Faithful"}),
-    ("w8a16", {"file": "cyws_w8a16_mpk.tar.gz", "label": "w8a16 · Faster"}),
+    ("bf16", {"file": "cyws_bf16_mpk.tar.gz", "label": "bf16 · Most Faithful", "family": "cyws", "title": "CYWS bf16"}),
+    ("w8a16", {"file": "cyws_w8a16_mpk.tar.gz", "label": "w8a16 · Faster", "family": "cyws", "title": "CYWS w8a16"}),
+    ("dinov2-448", {"file": "dinov2_vits14_reg_448_bf16_mpk.tar.gz", "label": "DINOv2 448 · Zero-Shot",
+                    "family": "dinov2", "title": "DINOv2 448"}),
 ])
+
+
 def models_storage(models_dir: Path) -> dict:
     """What the models take on disk: finished MPKs and stopped downloads."""
     files = sorted(Path(models_dir).glob("*_mpk.tar.gz")) if Path(models_dir).is_dir() else []
@@ -95,18 +101,23 @@ def default_models_dir() -> Path:
     return ROOT / "models"
 
 
-HUB_REPO = "dotimothy/sima-cyws"   # compiled models on Hugging Face (tools/publish_hub.py)
+# compiled models on Hugging Face (tools/publish_hub.py), one repository per family
+HUB_REPOS = ["dotimothy/sima-cyws", "dotimothy/sima-dinov2"]
+HUB_REPO = HUB_REPOS[0]
 HUB_COLLECTION = "dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b"
 
-# Settings the page may change, with their allowed values (anything else is rejected).
-OPTION_SPEC = {
-    "thr": (float, 0.05, 0.95),
-    "levels": (str, ("0", "0,1", "0,1,2")),
-    "register": (bool,),
-    "tiles": (str, ("full", "gated")),
-    "mask_mode": (str, ("box", "diff")),
-    "verify_change": (bool,),
-}
+# CYWS run settings the page may change (each family has its own: families.py)
+OPTION_SPEC = families.CYWS_OPTION_SPEC
+
+
+def parse_repos(value) -> list[str]:
+    """--hub-repo: a comma-separated list (or a list); '' means none."""
+    items = value.split(",") if isinstance(value, str) else list(value or [])
+    out = []
+    for r in (str(x).strip() for x in items):
+        if r and r not in out:
+            out.append(r)
+    return out
 
 
 def log(msg: str) -> None:
@@ -177,24 +188,33 @@ def mask_layer(mask: np.ndarray, hw: tuple[int, int], rgb: tuple[int, int, int],
 class Hub:
     """Compiled models published on Hugging Face, and fetching one onto this board.
 
-    The repository's `models.json` (tools/publish_hub.py) lists each model's MPK with its
-    size and SHA-256. A download goes to `<models>/<file>.part` and is moved into place
-    only once its size and sum are right, so the model list never sees half a file; a
-    stopped download is kept and the next one continues from where it stopped.
-    What comes from the network is checked: names and files against patterns, and
-    every byte against the sum.
+    Each repository's `models.json` (tools/publish_hub.py) lists models with their MPK,
+    size and SHA-256, and the family each belongs to (an entry's own `family`, else the
+    document's, else cyws). Several repositories are read in order; the first one wins
+    a name clash. A download goes to `<models>/<file>.part` and is moved into place only
+    once its size and sum are right, so the model list never sees half a file; a stopped
+    download is kept and the next one continues from where it stopped.
+    What comes from the network is checked: names and files against patterns, and every
+    byte against the sum. An entry this app cannot use is skipped (listed in `skipped`),
+    and the rest of the list still works.
     """
 
     REFRESH = 300                                   # seconds a fetched list is good for
     NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,40}")
     FILE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,80}\.tar\.gz")
     SPARE = 1 << 30                                 # disk left free after a download
+    FAMILIES = ("cyws", "dinov2")
 
-    def __init__(self, repo: str, models_dir: Path, loaded, catalog):
-        self.repo, self.dir = repo, Path(models_dir)
+    def __init__(self, repo, models_dir: Path, loaded, catalog):
+        self.repos = parse_repos(repo)
+        self.repo = self.repos[0] if self.repos else ""
+        self.dir = Path(models_dir)
         self._loaded, self._catalog = loaded, catalog
         self._lock = threading.Lock()
         self._models: dict | None = None
+        self._by_repo: dict[str, dict] = {}             # repo -> its valid entries, as last fetched
+        self._repo_error: dict[str, str | None] = {}
+        self._skipped: list[dict] = []
         self._fetched = 0.0
         self._fetching = False
         self._error: str | None = None
@@ -203,32 +223,103 @@ class Hub:
         self._verified: dict[str, tuple] = {}           # name -> (size, mtime_ns, sum matched)
         self.quiet = False                              # the --fetch command reports instead
 
-    def url(self, path: str) -> str:
-        return f"https://huggingface.co/{self.repo}/resolve/main/{path}"
+    def url(self, path: str, repo: str | None = None) -> str:
+        return f"https://huggingface.co/{repo or self.repo}/resolve/main/{path}"
+
+    @classmethod
+    def check_entry(cls, name, e, doc_family) -> tuple[dict | None, str]:
+        """(normalised entry, '') or (None, why it is skipped)."""
+        try:
+            files = e["files"]
+            if not (isinstance(name, str) and cls.NAME.fullmatch(name) and isinstance(e.get("path"), str)
+                    and cls.NAME.fullmatch(e["path"]) and isinstance(files, list) and len(files) == 1
+                    and isinstance(files[0].get("name"), str) and cls.FILE.fullmatch(files[0]["name"])
+                    and isinstance(files[0].get("bytes"), int) and not isinstance(files[0]["bytes"], bool)
+                    and isinstance(files[0].get("sha256"), str)
+                    and re.fullmatch(r"[0-9a-f]{64}", files[0]["sha256"])):
+                return None, "name, path or file is not one this app understands"
+        except (KeyError, TypeError, AttributeError):
+            return None, "name, path or file is not one this app understands"
+        family = e.get("family") or doc_family or "cyws"
+        if family not in cls.FAMILIES:
+            return None, f"family {family!r} is not one this app runs"
+        inp = e.get("input")
+        if inp is not None:
+            if not isinstance(inp, dict):
+                return None, "input is not an object"
+            size, images = inp.get("size"), inp.get("images")
+            if size is not None and (not isinstance(size, int) or isinstance(size, bool)
+                                     or (family == "dinov2" and (size < 14 or size % 14))
+                                     or (family == "cyws" and size != 256)):
+                return None, f"input size {size!r} does not fit a {family} model"
+            if images is not None and images != (1 if family == "dinov2" else 2):
+                return None, f"a {family} model does not take {images!r} images"
+        card = e.get("card")
+        if card is not None and not isinstance(card, dict):
+            return None, "card is not an object"
+        out = dict(e)
+        out["family"] = family
+        if card is not None:
+            out["card"] = {str(k)[:60]: str(v)[:400] for k, v in card.items() if isinstance(v, (str, int, float))}
+        return out, ""
+
+    def _fetch(self, repo: str) -> dict:
+        req = urllib.request.Request(self.url("models.json", repo), headers={"User-Agent": "neat-change-studio"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            doc = json.loads(r.read(1 << 20))
+        if not isinstance(doc, dict) or not isinstance(doc.get("models"), dict):
+            raise ValueError("models.json has no model list")
+        if doc.get("version", 1) not in (1, 2):
+            raise ValueError(f"models.json version {doc.get('version')!r} is newer than this app")
+        return doc
 
     def _refresh(self) -> None:
         try:
-            req = urllib.request.Request(self.url("models.json"), headers={"User-Agent": "neat-change-studio"})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                doc = json.loads(r.read(1 << 20))
-            models = {}
-            for name, e in doc["models"].items():
-                files = e["files"]
-                if not (self.NAME.fullmatch(name) and self.NAME.fullmatch(e["path"]) and len(files) == 1
-                        and self.FILE.fullmatch(files[0]["name"]) and isinstance(files[0]["bytes"], int)
-                        and re.fullmatch(r"[0-9a-f]{64}", files[0]["sha256"])):
-                    raise ValueError(f"the entry for {name!r} is not one this app understands")
-                models[name] = e
-            self._models, self._error = models, None
-        except (OSError, ValueError, KeyError, TypeError) as e:
-            self._error = f"Could not read the model list from Hugging Face: {e}"
+            skipped: list[dict] = []
+            for repo in self.repos:
+                try:
+                    doc = self._fetch(repo)
+                except (OSError, ValueError, KeyError, TypeError) as e:
+                    self._repo_error[repo] = f"Could not read the model list from Hugging Face ({repo}): {e}"
+                    continue
+                models = {}
+                for name, e in doc["models"].items():
+                    entry, why = self.check_entry(name, e, doc.get("family"))
+                    if entry is None:
+                        skipped.append({"repo": repo, "name": str(name), "reason": why})
+                        continue
+                    entry["repo"] = repo
+                    models[name] = entry
+                self._by_repo[repo], self._repo_error[repo] = models, None
+            merged: dict = {}
+            for repo in self.repos:                      # first repository wins a name clash
+                for name, e in self._by_repo.get(repo, {}).items():
+                    if name in merged:
+                        skipped.append({"repo": repo, "name": name,
+                                        "reason": f"{merged[name]['repo']} already lists a model named {name}"})
+                        continue
+                    merged[name] = e
+            self._skipped = skipped
+            if self._by_repo:
+                self._models = merged
+            self._error = next((self._repo_error[r] for r in self.repos if self._repo_error.get(r)), None)
         finally:
             self._fetched, self._fetching = time.monotonic(), False
+
+    def _all_listed(self) -> bool:
+        return all(r in self._by_repo for r in self.repos)
+
+    def _all_answered(self) -> bool:
+        """Every repository has answered, with its list or with an error."""
+        return all(r in self._by_repo or self._repo_error.get(r) for r in self.repos)
 
     def models(self, wait: bool = False) -> dict:
         """The list as last fetched; a fetch starts when there is none or it is old."""
         with self._lock:
-            stale = time.monotonic() - self._fetched > (self.REFRESH if self._models is not None else 15)
+            # A repository that answered with an error (say, not published yet) waits as long
+            # as a listed one; only a board with no list at all asks again soon.
+            ttl = self.REFRESH if self._models is not None and self._all_answered() else 15
+            stale = time.monotonic() - self._fetched > ttl
             if stale and not self._fetching:
                 self._fetching = True
                 t = threading.Thread(target=self._refresh, name="hub-list", daemon=True)
@@ -266,18 +357,25 @@ class Hub:
                 state = "damaged"                   # there, but not the published file: re-download it
             else:
                 state = "available"
+            repo = e.get("repo") or self.repo
             out[name] = {
                 "title": e.get("title", name), "about": e.get("about", ""), "precision": e.get("precision"),
                 "latency_ms": e.get("latency_ms"), "accuracy": e.get("accuracy") or {},
-                "file": f["name"], "bytes": f["bytes"], "url": self.url(f"{e['path']}/{f['name']}"),
+                "family": e.get("family", "cyws"), "repo": repo, "card": e.get("card") or {},
+                "input": e.get("input"), "facts": e.get("facts"),
+                "file": f["name"], "bytes": f["bytes"], "url": self.url(f"{e['path']}/{f['name']}", repo),
                 "partial_bytes": part.stat().st_size if part.is_file() and not downloading else 0,
                 "state": state, "on_disk_bytes": st.st_size if st is not None else 0, "verified": verified,
                 "replacing": downloading and st is not None,
                 "loaded": name == self._loaded(), "progress": progress, "error": self._failed.get(name),
             }
+        repos = [{"repo": r, "page": f"https://huggingface.co/{r}", "listed": r in self._by_repo,
+                  "error": self._repo_error.get(r)} for r in self.repos]
         return {"repo": self.repo, "page": f"https://huggingface.co/{self.repo}",
-                "collection": f"https://huggingface.co/collections/{HUB_COLLECTION}" if self.repo == HUB_REPO else None,
-                "error": self._error, "listed": self._models is not None, "models": out,
+                "collection": (f"https://huggingface.co/collections/{HUB_COLLECTION}"
+                               if any(r in HUB_REPOS for r in self.repos) else None),
+                "error": self._error, "listed": self._all_listed(), "models": out,
+                "repos": repos, "skipped": list(self._skipped),
                 "directory": str(self.dir), "free_bytes": _free_bytes(self.dir), **models_storage(self.dir)}
 
     def download(self, name: str, replace: bool = False) -> None:
@@ -372,7 +470,7 @@ class Hub:
                         digest.update(chunk)
             job["done"] = have
             headers = {"User-Agent": "neat-change-studio", **({"Range": f"bytes={have}-"} if have else {})}
-            req = urllib.request.Request(self.url(f"{e['path']}/{f['name']}"), headers=headers)
+            req = urllib.request.Request(self.url(f"{e['path']}/{f['name']}", e.get("repo")), headers=headers)
             with urllib.request.urlopen(req, timeout=60) as r:
                 if have and r.status != 206:             # the server sent everything: start over
                     have, digest, job["done"] = 0, hashlib.sha256(), 0
@@ -394,7 +492,7 @@ class Hub:
             st = target.stat()
             self._verified[name] = (st.st_size, st.st_mtime_ns, True)
             if not self.quiet:
-                log(f"downloaded {name} from {self.repo} ({f['bytes'] >> 20} MB)")
+                log(f"downloaded {name} from {e.get('repo') or self.repo} ({f['bytes'] >> 20} MB)")
         except InterruptedError:
             self._failed[name] = "Download cancelled. What arrived is kept; Download continues from there."
         except (OSError, ValueError) as err:
@@ -414,7 +512,8 @@ class Demo:
         self.lock = threading.RLock()          # one pipeline run / model switch at a time
         self.backend = None
         self.model_name: str | None = None
-        self.state, self.error = "starting", ""
+        self.family: families.Family | None = None      # the loaded model's family
+        self.state, self.error = "starting", ""         # starting | loading | ready | idle | error
         # model switch progress, for the page's animation: stage is release | load | warm
         self.load_stage, self.load_target, self.load_t0 = "", "", 0.0
         self.last_load_s: dict[str, float] = {}
@@ -434,32 +533,23 @@ class Demo:
         self.thumbs: dict[tuple[str, str], bytes] = {}
         self.runs = 0
         self.mla_ms: list[float] = []
-        repo = getattr(args, "hub_repo", "")
-        self.hub = Hub(repo, self.models_dir, loaded=lambda: self.model_name, catalog=self._catalog) if repo else None
+        repos = parse_repos(getattr(args, "hub_repo", ""))
+        self.hub = Hub(repos, self.models_dir, loaded=lambda: self.model_name, catalog=self._catalog) if repos else None
         self._load_dataset()
 
     def _base_config(self) -> AppConfig:
-        """Default AppConfig, with the CLI's 'balanced' preset applied when the CLI defines presets."""
-        cfg = AppConfig()
-        try:
-            import run_cyws_neat as cli
-            presets = getattr(cli, "PRESETS", None)
-            if isinstance(presets, dict) and "balanced" in presets:
-                fields = {f.name for f in dataclasses.fields(AppConfig)}
-                cfg = dataclasses.replace(cfg, **{k: v for k, v in presets["balanced"].items() if k in fields})
-        except Exception as e:   # presets are a convenience; the dataclass defaults are fine
-            log(f"note: no CLI presets ({e})")
-        return cfg
+        """Default CYWS AppConfig, with the CLI's 'balanced' preset applied when the CLI defines presets."""
+        return families.get("cyws").base_config()
+
+    def active_family(self) -> "families.Family":
+        """The loaded model's family; CYWS while nothing is loaded."""
+        return self.family or families.get("cyws")
+
+    def _base_for(self, fam: "families.Family"):
+        return self.base_cfg if fam.name == "cyws" else fam.base_config()
 
     def presets(self) -> dict:
-        try:
-            import run_cyws_neat as cli
-            p = getattr(cli, "PRESETS", None)
-            if isinstance(p, dict):
-                return {k: {kk: (list(vv) if isinstance(vv, tuple) else vv) for kk, vv in v.items()} for k, v in p.items()}
-        except Exception:
-            pass
-        return {}
+        return self.active_family().presets()
 
     # -- dataset ----------------------------------------------------------------
     def _load_dataset(self) -> None:
@@ -510,11 +600,14 @@ class Demo:
 
     # -- model ------------------------------------------------------------------
     def _catalog(self) -> "OrderedDict[str, dict]":
-        """Models this demo knows: the built-in two, plus any Hugging Face lists."""
+        """Models this demo knows: the built-in ones, plus any Hugging Face lists."""
         out = OrderedDict((n, dict(m)) for n, m in MODELS.items())
         for n, e in (self.hub.models() if self.hub else {}).items():
-            label = MODELS[n]["label"] if n in MODELS else f"{n} · {e.get('title') or n}"
-            out[n] = {"file": e["files"][0]["name"], "label": label, "bytes": e["files"][0]["bytes"]}
+            builtin = MODELS.get(n)
+            out[n] = {"file": e["files"][0]["name"], "bytes": e["files"][0]["bytes"],
+                      "label": builtin["label"] if builtin else f"{n} · {e.get('title') or n}",
+                      "family": builtin["family"] if builtin else e.get("family", "cyws"),
+                      "title": builtin["title"] if builtin else (e.get("title") or n)}
         return out
 
     def _on_board(self, m: dict) -> bool:
@@ -522,8 +615,8 @@ class Demo:
         return path.is_file() and ("bytes" not in m or path.stat().st_size == m["bytes"])
 
     def available_models(self) -> list[dict]:
-        return [{"name": n, "label": m["label"], "available": self._on_board(m),
-                 "loaded": n == self.model_name} for n, m in self._catalog().items()]
+        return [{"name": n, "label": m["label"], "title": m.get("title", n), "family": m.get("family", "cyws"),
+                 "available": self._on_board(m), "loaded": n == self.model_name} for n, m in self._catalog().items()]
 
     def delete_model(self, name: str) -> None:
         """Delete a model's file (and any stopped download of it) from the models directory.
@@ -536,7 +629,7 @@ class Demo:
             raise CywsError(f"{name} is downloading; cancel the download first")
         with self.lock:                                  # waits out a load or a run in progress
             if name == self.model_name or (self.state == "loading" and self.load_target == name):
-                raise CywsError(f"{name} is loaded on the MLA. Load another model before deleting it")
+                raise CywsError(f"{name} is loaded on the MLA. Load another model or unload it before deleting it")
             path = (self.models_dir / catalog[name]["file"]).resolve()
             if path.parent != self.models_dir.resolve():
                 raise CywsError(f"refusing to delete a file outside the models directory: {path}")
@@ -553,11 +646,13 @@ class Demo:
         catalog = self._catalog()
         if name not in catalog:
             raise CywsError(f"unknown model {name!r}")
+        fam = families.get(catalog[name].get("family", "cyws"))
         path = self.models_dir / catalog[name]["file"]
         if not path.exists():
-            err = CywsError(f"{name} is not on this board yet: download it in Settings (Model)")
+            title = catalog[name].get("title") or name
+            err = CywsError(f"{title} is not on this board yet. Download it in Models.")
             if self.backend is None:            # nothing loaded: say so instead of "starting" forever
-                self.state, self.error = "error", str(err)
+                self.state, self.error = "idle", str(err)
             raise err
         with self.lock:
             self.state, self.error = "loading", ""
@@ -567,17 +662,13 @@ class Demo:
                 if self.backend is not None:          # close before building: one runner at a time
                     self.load_stage = "release"
                     self.backend.close()
-                    self.backend, self.model_name = None, None
+                    self.backend, self.model_name, self.family = None, None, None
                 self.load_stage = "load"
-                if self.args.backend == "neat":
-                    self.backend = backends.NeatBackend(str(path), max_in_flight=2)
-                else:
-                    self.backend = backends.make_backend(self.args.backend, self.args.onnx)
+                self.backend = fam.open(path, self.args.backend, self.args.onnx)
                 # warm-up: first inference pays one-time costs
                 self.load_stage = "warm"
-                z = np.zeros((256, 256, 3), np.float32)
-                self.backend.infer(z, z)
-                self.model_name, self.state = name, "ready"
+                fam.warm(self.backend)
+                self.model_name, self.family, self.state = name, fam, "ready"
                 self.mla_ms.clear()
                 self.last_load_s[name] = time.perf_counter() - t0
                 log(f"model {name} ready ({self.last_load_s[name]:.1f} s)")
@@ -594,7 +685,23 @@ class Demo:
                 try:
                     self.backend.close()
                 finally:
-                    self.backend, self.model_name = None, None
+                    self.backend, self.model_name, self.family = None, None, None
+
+    def unload_model(self) -> dict:
+        """Free the MLA: close the loaded model (waits out a run or a load) and go idle."""
+        with self.lock:
+            name = self.model_name
+            try:
+                if self.backend is not None:
+                    self.backend.close()
+            finally:
+                self.backend, self.model_name, self.family = None, None, None
+                self.state, self.error = "idle", ""
+                self.load_stage = ""
+                self.mla_ms.clear()
+        if name:
+            log(f"model {name} unloaded")
+        return self.status()
 
     # -- uploads ----------------------------------------------------------------
     def add_upload(self, before_fs, after_fs, before_from: str | None = None) -> dict:
@@ -641,47 +748,30 @@ class Demo:
         return {"id": uid, "before": fs_name(before_fs) if before_fs else before_from, "after": fs_name(after_fs)}
 
     # -- run --------------------------------------------------------------------
-    def config_from(self, opts: dict) -> AppConfig:
-        cfg = self.base_cfg
-        fields = {f.name for f in dataclasses.fields(AppConfig)}
-        preset = opts.get("preset")
-        if preset:
-            p = self.presets().get(preset)
-            if p is None:
-                raise CywsError(f"unknown preset {preset!r}")
-            cfg = dataclasses.replace(cfg, **{k: (tuple(v) if isinstance(v, list) else v)
-                                              for k, v in p.items() if k in fields})
-        upd = {}
-        for k, spec in OPTION_SPEC.items():
-            if k not in opts or opts[k] is None:
-                continue
-            v = opts[k]
-            if spec[0] is bool:
-                upd[k] = bool(v)
-            elif spec[0] is float:
-                v = float(v)
-                if not spec[1] <= v <= spec[2]:
-                    raise CywsError(f"{k} must be in [{spec[1]}, {spec[2]}]")
-                upd[k] = v
-            else:
-                if str(v) not in spec[1]:
-                    raise CywsError(f"{k} must be one of {spec[1]}")
-                upd[k] = tuple(int(x) for x in str(v).split(",")) if k == "levels" else str(v)
-        if upd.get("mask_mode") == "diff" and not upd.get("register", cfg.register):
-            upd["mask_mode"] = "box"          # diff masks need the aligned before image
-        return dataclasses.replace(cfg, **{k: v for k, v in upd.items() if k in fields})
+    def config_from(self, opts: dict, family: "families.Family | None" = None):
+        """The run config for the page's options, checked against the family's option spec."""
+        fam = family or self.active_family()
+        return fam.config_from(self._base_for(fam), opts)
 
     def run(self, pid: str, opts: dict) -> dict:
+        if self.state == "idle":
+            raise NoModelError(NO_MODEL)
         item = self.pairs.get(pid) or self.uploads.get(pid)
         if item is None:
             raise CywsError(f"unknown pair {pid!r}")
-        cfg = self.config_from(opts)
-        pair, views = self._load(pid, item, cfg)  # CPU only: decodes outside the MLA lock
+        fam = self.active_family()
+        cfg = self.config_from(opts, fam)
+        pair, views = self._load(pid, item, cfg, fam)  # CPU only: decodes outside the MLA lock
         with self.lock:
+            if self.state == "idle":
+                raise NoModelError(NO_MODEL)
             if self.state != "ready" or self.backend is None:
                 raise CywsError(f"model is not ready ({self.state}{': ' + self.error if self.error else ''})")
-            app = CywsApp(self.backend, cfg)
-            res = app.process(pair)
+            if self.family is not fam:                     # the model changed meanwhile: redo for the new one
+                fam = self.family
+                cfg = self.config_from(opts, fam)
+                pair, views = self._load(pid, item, cfg, fam)
+            res = fam.process(self.backend, pair, cfg)
             model = self.model_name
             self.runs += 1
         t0 = time.perf_counter()
@@ -738,6 +828,7 @@ class Demo:
             "metrics": None if metrics is None else post_process_scalars(metrics),
             "images": {k: f"/api/result/{rid}/{k}" for k in images},
             "config": {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)},
+            "family": fam.name,
         }
         stats = self.backend.stats() if self.backend is not None else {}
         lat = (stats.get("latency") or {}).get("mean_ms")
@@ -746,7 +837,7 @@ class Demo:
             self.mla_ms[:] = self.mla_ms[-50:]
         return json.loads(json.dumps(out, default=_json_default))
 
-    def _load(self, pid: str, item, cfg: AppConfig):
+    def _load(self, pid: str, item, cfg, fam: "families.Family | None" = None):
         """Decoded pair for (pid, decode settings), from a small LRU when possible.
 
         Only work_long, register and allow_squash change what load_pair returns;
@@ -760,7 +851,7 @@ class Demo:
         if pair is not None:
             pair, views = pair
             return dataclasses.replace(pair, meta={**pair.meta, "load_ms": 0.0, "load_cached": True}), views
-        pair = CywsApp(None, cfg).load(item)
+        pair = (fam or families.get("cyws")).load(item, cfg)
         views: dict = {}  # encoded display images that depend only on the decoded pair
         with self.decoded_lock:
             self.decoded[key] = (pair, views)
@@ -774,15 +865,25 @@ class Demo:
             stats = self.backend.stats() if self.backend is not None else {}
         except Exception:
             pass
+        fam = self.active_family()
         return {"app": "cyws-demo", "state": self.state, "error": self.error, "model": self.model_name,
+                "family": self.family.name if self.family else None,
+                "capabilities": dict(fam.capabilities),
+                "families": {n: f.describe() for n, f in families.FAMILIES.items()},
                 "models": self.available_models(), "backend": self.args.backend, "runs": self.runs,
-                "pairs": len(self.pairs), "uploads": list(self.uploads), "presets": self.presets(),
-                "defaults": {k: _json_default(getattr(self.base_cfg, k)) if isinstance(getattr(self.base_cfg, k), tuple)
-                             else getattr(self.base_cfg, k) for k in OPTION_SPEC if hasattr(self.base_cfg, k)},
+                "pairs": len(self.pairs), "uploads": list(self.uploads), "presets": fam.presets(),
+                "defaults": fam.defaults(self._base_for(fam)),
                 "latency": stats.get("latency"), "https_port": self.args.port if self.args.tls else None,
                 "load": {"stage": self.load_stage, "target": self.load_target,
                          "elapsed_s": round(time.perf_counter() - self.load_t0, 2) if self.load_stage else 0.0,
                          "expected_s": self.last_load_s.get(self.load_target)}}
+
+
+NO_MODEL = "No model is loaded. Load one in Models."
+
+
+class NoModelError(CywsError):
+    """A run while no model is loaded (the page answers 409)."""
 
 
 def post_process_scalars(m: dict) -> dict:
@@ -856,6 +957,8 @@ def create_app(demo: Demo) -> Flask:
         body = request.get_json(silent=True) or {}
         try:
             return jsonify(demo.run(str(body.get("id", "")), body.get("options") or {}))
+        except NoModelError as e:
+            return fail(e, 409)
         except CywsError as e:
             return fail(e)
         except Exception as e:
@@ -916,6 +1019,7 @@ def create_app(demo: Demo) -> Flask:
             return fail(e)
 
     @app.post("/api/model")
+    @app.post("/api/models/load")
     def model():
         name = (request.get_json(silent=True) or {}).get("name", "")
         try:
@@ -923,6 +1027,14 @@ def create_app(demo: Demo) -> Flask:
             return jsonify(demo.status())
         except Exception as e:
             return fail(e)
+
+    @app.post("/api/models/unload")
+    def unload():
+        try:
+            return jsonify(demo.unload_model())
+        except Exception as e:
+            log(traceback.format_exc())
+            return fail(e, 500)
 
     return app
 
@@ -940,8 +1052,9 @@ def main() -> int:
     ap.add_argument("--backend", default="neat", choices=["neat", "onnx", "fake"],
                     help="neat on the board; onnx/fake for trying the page on a PC")
     ap.add_argument("--onnx", default=str(ROOT / "build/onnx/cyws_fused.onnx"))
-    ap.add_argument("--hub-repo", default=HUB_REPO,
-                    help="Hugging Face repository whose models.json lists downloadable models ('' for none)")
+    ap.add_argument("--hub-repo", default=",".join(HUB_REPOS),
+                    help="Hugging Face repositories whose models.json lists downloadable models, "
+                         "comma-separated, first wins a name clash ('' for none)")
     ap.add_argument("--list-hub", action="store_true", help="list the models on Hugging Face and exit")
     ap.add_argument("--fetch", nargs="+", metavar="NAME",
                     help="download these models from Hugging Face into --models and exit ('all' for every one)")
@@ -1036,23 +1149,29 @@ def serve_both_protocols(server, cert: str, key: str) -> None:
 def hub_command(args) -> int:
     """`--list-hub` and `--fetch`: the model hub from a terminal. Nothing is served and
     the MLA is not touched, so it works while the demo runs."""
-    if not args.hub_repo:
+    repos = parse_repos(args.hub_repo)
+    if not repos:
         print("no --hub-repo: there is nothing to list or fetch", file=sys.stderr)
         return 1
     models_dir = Path(args.models).resolve()
     models_dir.mkdir(parents=True, exist_ok=True)
-    hub = Hub(args.hub_repo, models_dir, loaded=lambda: None, catalog=lambda: {})
+    hub = Hub(repos, models_dir, loaded=lambda: None, catalog=lambda: {})
     hub.quiet = True
     hub._refresh()
     listed = hub.describe()
-    if listed["error"]:
-        print(listed["error"], file=sys.stderr)
+    for r in listed["repos"]:
+        if r["error"]:
+            print(r["error"], file=sys.stderr)
+    if not any(r["listed"] for r in listed["repos"]):
         return 1
+    for sk in listed["skipped"]:
+        print(f"  skipped {sk['name']} from {sk['repo']}: {sk['reason']}", file=sys.stderr)
     mb = lambda n: f"{n / 1e9:.2f} GB" if n >= 1e9 else f"{n / 1e6:.0f} MB"
     if getattr(args, "list_hub", False):
-        print(f"models in {listed['page']} (into {models_dir}):")
+        pages = ", ".join(r["page"] for r in listed["repos"] if r["listed"])
+        print(f"models in {pages} (into {models_dir}):")
         for name, m in listed["models"].items():
-            print(f"  {name:8s} {m['title']:14s} {mb(m['bytes']):>8s}  {m['state'].replace('_', ' ')}")
+            print(f"  {name:12s} {m['title']:18s} {m['family']:7s} {mb(m['bytes']):>8s}  {m['state'].replace('_', ' ')}")
         print(f"on this board: {listed['model_count']} model(s), {mb(listed['used_bytes'])}; "
               f"{mb(listed['free_bytes'])} free")
         return 0
@@ -1076,7 +1195,7 @@ def hub_command(args) -> int:
     for name in names:
         m = listed["models"].get(name)
         if m is None:
-            print(f"  {name}: not in {args.hub_repo} (there: {', '.join(listed['models'])})", file=sys.stderr)
+            print(f"  {name}: not in {', '.join(repos)} (there: {', '.join(listed['models'])})", file=sys.stderr)
             failed += 1
             continue
         if m["state"] == "on_board":
@@ -1119,8 +1238,9 @@ def delete_command(args) -> int:
     on this board has loaded is refused (it is asked over HTTP on --port)."""
     models_dir = Path(args.models).resolve()
     files = {n: m["file"] for n, m in MODELS.items()}
-    if args.hub_repo:                                    # names Hugging Face adds, when it answers
-        hub = Hub(args.hub_repo, models_dir, loaded=lambda: None, catalog=lambda: {})
+    repos = parse_repos(args.hub_repo)
+    if repos:                                            # names Hugging Face adds, when it answers
+        hub = Hub(repos, models_dir, loaded=lambda: None, catalog=lambda: {})
         hub._refresh()
         files.update({n: e["files"][0]["name"] for n, e in (hub._models or {}).items()})
     loaded = None
@@ -1129,7 +1249,9 @@ def delete_command(args) -> int:
         with urllib.request.urlopen(req, timeout=2) as r:
             st = json.loads(r.read(1 << 20))
             if st.get("app") == "cyws-demo":
-                loaded = st.get("model") or (st.get("load") or {}).get("target")
+                load = st.get("load") or {}       # target is the last load's; only counts while loading
+                loaded = st.get("model") or (load.get("target") if load.get("stage") or st.get("state") == "loading"
+                                             else None)
     except (OSError, ValueError):
         pass
     names = [n for n in files if (models_dir / files[n]).exists()] if args.delete == ["all"] else args.delete
@@ -1142,7 +1264,8 @@ def delete_command(args) -> int:
         path = models_dir / files[name]
         part = path.with_name(path.name + ".part")
         if name == loaded:
-            print(f"  {name}: the running demo has it loaded; load another model or stop the demo first",
+            print(f"  {name}: the running demo has it loaded; load another model, Unload it in Models, "
+                  "or stop the demo first",
                   file=sys.stderr)
             failed += 1
             continue

@@ -65,7 +65,7 @@
     </nav>
     <div class="header-actions">
       <a class="hdr-link" href="https://github.com/dotimothy/neat-change-studio" title="Source Code on GitHub" aria-label="Source code on GitHub"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg><span>GitHub</span></a>
-      <a class="hdr-link" href="https://huggingface.co/dotimothy/sima-cyws" title="Models on Hugging Face" aria-label="Models on Hugging Face"><svg class="ic" aria-hidden="true"><use href="#i-cube"/></svg><span>Hugging Face</span></a>
+      <a class="hdr-link" href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b" title="Models on Hugging Face" aria-label="Models on Hugging Face"><svg class="ic" aria-hidden="true"><use href="#i-cube"/></svg><span>Hugging Face</span></a>
       <button type="button" class="icon-btn theme-btn" id="btn-theme" title="Toggle Theme" aria-label="Toggle dark or light theme"><svg class="ic ic-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ic ic-sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
       <button type="button" class="icon-btn menu-btn" id="btn-menu" aria-label="Open Menu" aria-expanded="false" aria-controls="nav"><svg class="ic ic-menu" aria-hidden="true"><use href="#i-menu"/></svg><svg class="ic ic-close" aria-hidden="true"><use href="#i-close"/></svg></button>
     </div>
@@ -83,10 +83,10 @@
       <h1 class="hero-title" id="hero-title">See What Changed</h1>
     </div>
     <p class="hero-powered">Powered by <strong>Neat</strong> · <strong>Modalix MLA</strong></p>
-    <p class="hero-sub">Give it a before photo and an after photo of the same scene. It draws boxes around what appeared, disappeared or changed, on the SiMa.ai Modalix MLA. The model is CYWS (The Change You Want to See, WACV 2023), compiled to one MLA ELF and run through NEAT.</p>
+    <p class="hero-sub">Give it a before photo and an after photo of the same scene. It draws boxes around what appeared, disappeared or changed, on the SiMa.ai Modalix MLA. The model is CYWS (The Change You Want to See, WACV 2023), or DINOv2 used zero-shot, each compiled to one MLA ELF and run through NEAT.</p>
     <div class="cta-row">
       <a class="btn spectrum" href="https://github.com/dotimothy/neat-change-studio"><svg class="ic" aria-hidden="true" style="stroke:currentColor;fill:none"><use href="#i-code"/></svg>Get the Code</a>
-      <a class="btn" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download the Models</a>
+      <a class="btn" href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download the Models</a>
     </div>
 
     <figure class="device">
@@ -159,7 +159,7 @@
         <div class="n">02</div>
         <div>
           <h3>Set Up</h3>
-          <p>Installs any missing Python packages into the <code>pyneat</code> environment, downloads a model from Hugging Face (bf16 unless you pick another) into the shared models directory, <code>/media/nvme/models/cyws</code>, makes the HTTPS certificate, and offers to add the <code>neat-change</code> command and, on a board with a desktop, a desktop icon. <code>CYWS_MODELS=all</code> fetches bf16 and w8a16 without asking.</p>
+          <p>Installs any missing Python packages into the <code>pyneat</code> environment, downloads a model from Hugging Face (bf16 unless you pick another) into the shared models directory, <code>/media/nvme/models/cyws</code>, makes the HTTPS certificate, and offers to add the <code>neat-change</code> command and, on a board with a desktop, a desktop icon. <code>CYWS_MODELS=all</code> fetches bf16, w8a16 and dinov2-448 without asking.</p>
           <div class="code">
             <div class="code-head"><span class="where"><i></i>Board</span><button type="button" class="copy-btn" data-copy="cd neat-change-studio &amp;&amp; ./setup.sh"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Set Up Command</span></button></div>
 <pre><code><span class="p">$ </span>cd neat-change-studio &amp;&amp; ./setup.sh</code></pre>
@@ -229,7 +229,7 @@
           </div>
         </div>
         <p class="small">testCYWS is the author's private set and is not published, so bring your own pairs in this layout: <code>images/&lt;id&gt;_ref.jpg</code> (before), <code>images/&lt;id&gt;_cap.jpg</code> (after) and, for metrics, <code>masks/&lt;id&gt;.jpg</code>. The default folder is <code>data/testCYWS</code>; set <code>CYWS_DATA</code> to use another one, and run the whole set with <code>./run.sh --mode dataset</code>.</p>
-        <p class="small">Only one app may use the MLA at a time, so stop other demos first. The web demo can also download, verify, re-download and delete models itself, under Settings → Model. Every download is checked against its SHA-256.</p>
+        <p class="small">Only one app may use the MLA at a time, so stop other demos first. The web demo can also load, unload, download, verify, re-download and delete models itself, in its Models window. Every download is checked against its SHA-256.</p>
       </div>
     </div>
   </div>
@@ -331,6 +331,23 @@
         </ul>
         <p class="small" style="margin-top:12px">Result in bf16: one MLA ELF plus 7 EV74 plugins, no A65 stage. Against upstream in float64 the rewrite differs by at most 1.2e-12.</p>
       </div>
+    </div>
+
+    <div class="card table-card" style="margin-top:16px">
+      <div class="tc-head"><h3 class="card-title" id="tbl-zs">A Second Model: DINOv2, Zero-Shot</h3>
+        <p><a href="https://github.com/facebookresearch/dinov2">DINOv2</a> ViT-S/14 with 4 registers is a general image feature extractor, compiled to one MLA ELF with no A65 stage (4 EV74 plugins): one 448×448 image in, a feature for each of its 32×32 patches out, in 24.5 ms (50 images/s, 14.0 W). Both photos go through it, and so do overlapping tiles. A patch of the after photo with no similar patch nearby in the before photo is new; one of the before photo with no match in the after photo is gone. Nothing is trained for change detection.</p></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tbl-zs">
+        <table class="fit-sm" aria-labelledby="tbl-zs">
+          <thead><tr><th scope="col">testCYWS</th><th scope="col" class="num">Found</th><th scope="col" class="num">Pixel F1</th><th scope="col" class="num">False-Alarm Pairs (of 15)</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">DINOv2, whole photo (board bf16)</th><td class="num" data-label="Found">27/47</td><td class="num" data-label="Pixel F1">0.566</td><td class="num" data-label="False-Alarm Pairs (of 15)">1</td></tr>
+            <tr class="hl"><th scope="row">DINOv2, + 0.6 tiles (Balanced)</th><td class="num" data-label="Found">28/47</td><td class="num" data-label="Pixel F1"><strong>0.614</strong></td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td></tr>
+            <tr><th scope="row">DINOv2, + tiles, threshold 0.35</th><td class="num" data-label="Found">30/47</td><td class="num" data-label="Pixel F1">0.603</td><td class="num" data-label="False-Alarm Pairs (of 15)">3</td></tr>
+            <tr><th scope="row">CYWS bf16, Balanced</th><td class="num" data-label="Found">33/47</td><td class="num" data-label="Pixel F1">0.587</td><td class="num" data-label="False-Alarm Pairs (of 15)">2</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tbl-note">The settings of both models were tuned on these same 28 pairs, so the numbers are optimistic for new scenes. On the board, DINOv2's features match PyTorch FP32 to a patch cosine of 0.994 (0.997 centred).</p>
     </div>
 
     <div class="card table-card" style="margin-top:16px">
@@ -466,17 +483,17 @@
         <div class="feature-media">
           <div class="shot vid" data-vid>
             <video width="720" height="450" muted loop playsinline controls preload="none" poster="assets/media/models-still.webp"
-                   aria-label="Settings → Model: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up">
+                   aria-label="The model switch: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up">
               <source src="assets/media/models.mp4" type="video/mp4">
               <a href="models.gif"><img src="assets/media/models-still.webp" width="720" height="450" loading="lazy" alt="The switch card: w8a16 is ready on the MLA"></a>
             </video>
-            <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Model Switch</span></button><a class="vid-btn lb-open" href="models.gif" data-video="assets/media/models.mp4" data-poster="assets/media/models-still.webp" data-caption="Settings → Model: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up."><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Enlarge<span class="sr-only">: Model Switch</span></a></div>
+            <div class="vid-ctl"><button type="button" class="vid-btn vid-toggle"><svg class="ic ic-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="ic ic-play" aria-hidden="true"><use href="#i-play"/></svg><span class="lbl">Pause</span><span class="sr-only"> Animation: Model Switch</span></button><a class="vid-btn lb-open" href="models.gif" data-video="assets/media/models.mp4" data-poster="assets/media/models-still.webp" data-caption="The model switch: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up."><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Enlarge<span class="sr-only">: Model Switch</span></a></div>
           </div>
         </div>
         <div class="feature-text">
           <p class="card-title">Models</p>
-          <h3>A Hugging Face Catalog in Settings</h3>
-          <p>Settings → Model lists the compiled models on <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a>. A model that is not on the board downloads with progress, cancel and resume, and its SHA-256 is checked before it can be loaded. Picking one switches the MLA over. Models on the board can be verified, re-downloaded or deleted, and a storage bar shows the space they use.</p>
+          <h3>A Model Manager in Its Own Window</h3>
+          <p>The Models window, opened from the header, has a card for each model on the board, and under Add Model the compiled models on <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a> and <a href="https://huggingface.co/dotimothy/sima-dinov2">dotimothy/sima-dinov2</a>. <strong>Load</strong> switches the MLA over and <strong>Unload</strong> frees it for other apps. A model that is not on the board downloads with progress, cancel and resume, and its SHA-256 is checked before it can be loaded. Models on the board can be verified, re-downloaded or deleted, a storage bar shows the space they use, and each card opens a <strong>Model Card</strong> with the model's facts.</p>
           <p>On a fresh board, the first model downloaded loads by itself.</p>
         </div>
       </article>
@@ -619,11 +636,11 @@
   <div class="wrap">
     <div class="section-head">
       <p class="eyebrow">Models</p>
-      <h2 id="models-title">Two Compiled Builds on Hugging Face</h2>
-      <p class="lead">Both are single-ELF MPKs for the Modalix MLA, in <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a> and the collection <a href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b">SiMa.ai Change Detection Models</a>. Download them from the web demo's <strong>Settings → Model</strong>, with <code>./setup.sh</code>, or with <code>neat-change --fetch bf16</code>. They go to one models directory, <code>/media/nvme/models/cyws</code>, shared by every install and kept across updates; <code>./setup.sh --models-dir DIR</code> moves it.</p>
+      <h2 id="models-title">Three Compiled Models on Hugging Face</h2>
+      <p class="lead">All three are single-ELF MPKs for the Modalix MLA: the two CYWS builds in <a href="https://huggingface.co/dotimothy/sima-cyws">dotimothy/sima-cyws</a> and DINOv2 in <a href="https://huggingface.co/dotimothy/sima-dinov2">dotimothy/sima-dinov2</a>, both in the collection <a href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b">SiMa.ai Change Detection Models</a>. Download them from the web demo's <strong>Models</strong> window, with <code>./setup.sh</code>, or with <code>neat-change --fetch bf16</code> (or <code>w8a16</code>, <code>dinov2-448</code>). They go to one models directory, <code>/media/nvme/models/cyws</code>, shared by every install and kept across updates; <code>./setup.sh --models-dir DIR</code> moves it.</p>
     </div>
 
-    <div class="grid grid-2">
+    <div class="grid grid-3">
       <article class="card model-card rec">
         <div class="mc-head"><span class="mc-name">bf16</span><span class="mc-prec">BF16</span><span class="badge">Default</span></div>
         <p class="mc-desc">The most accurate build: on the board it matches the FP32 model's boxes one for one.</p>
@@ -651,8 +668,22 @@
           <a class="btn sm" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Get w8a16</a>
         </div>
       </article>
+
+      <article class="card model-card">
+        <div class="mc-head"><span class="mc-name">dinov2-448</span><span class="mc-prec">BF16</span><span class="badge alt">Zero-Shot</span></div>
+        <p class="mc-desc">DINOv2 ViT-S/14 (Meta) with 4 registers. Compares the features of the two photos, with no change-detection training.</p>
+        <dl class="kv">
+          <div><dt>Latency</dt><dd>24.5 <small>ms / image</small></dd></div>
+          <div><dt>Feature Cosine</dt><dd>0.994</dd></div>
+          <div><dt>testCYWS Found</dt><dd>28/47 <small>F1 0.614</small></dd></div>
+          <div><dt>Size</dt><dd>77 <small>MB</small></dd></div>
+        </dl>
+        <div class="mc-foot">
+          <a class="btn sm" href="https://huggingface.co/dotimothy/sima-dinov2"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Get dinov2-448</a>
+        </div>
+      </article>
     </div>
-    <p class="small" style="margin-top:14px">Latency is <code>Model.benchmark</code>. testCYWS numbers use the balanced preset on the board. Both models take <code>in0_before</code> and <code>in1_after</code> (float32 256×256×3 HWC, RGB, pixel / 255) and return one fused <code>(10, 256, 256)</code> output.</p>
+    <p class="small" style="margin-top:14px">Latency is <code>Model.benchmark</code>. testCYWS numbers use the balanced preset, and the settings of both families were tuned on those same pairs, so they are optimistic for new scenes. The CYWS models take <code>in0_before</code> and <code>in1_after</code> (float32 256×256×3 HWC, RGB, pixel / 255) and return one fused <code>(10, 256, 256)</code> output. DINOv2 takes one float32 448×448×3 image (RGB / 255) and returns <code>(1, 384, 1, 1029)</code>: a class token, 4 registers and 32×32 patch features; a pair is two images per window.</p>
   </div>
 </section>
 
@@ -669,19 +700,21 @@
         <ul>
           <li>The code is under the Apache License 2.0 (<a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/LICENSE">LICENSE</a>, <a href="https://github.com/dotimothy/neat-change-studio/blob/HEAD/NOTICE">NOTICE</a>).</li>
           <li>CYWS is by Ragav Sachdeva and Andrew Zisserman (<a href="https://github.com/ragavsachdeva/The-Change-You-Want-to-See">The Change You Want to See</a>, WACV 2023). Its authors have confirmed that CYWS, its code and pretrained weights, is released under the Apache License 2.0; see NOTICE. The compiled models are derived from those weights and are also Apache-2.0.</li>
+          <li>DINOv2, its code and pretrained weights, is by Meta Platforms, Inc. (<a href="https://github.com/facebookresearch/dinov2">facebookresearch/dinov2</a>), under the Apache License 2.0. The compiled DINOv2 model is derived from those weights and is also Apache-2.0.</li>
           <li>Inter and JetBrains Mono are under the SIL Open Font License 1.1 (<a href="assets/fonts/OFL-Inter.txt">Inter</a>, <a href="assets/fonts/OFL-JetBrainsMono.txt">JetBrains Mono</a>).</li>
           <li>SiMa.ai, Modalix, Neat and the SiMa.ai and Neat logos are trademarks of SiMa.ai and are not covered by the Apache License.</li>
         </ul>
         <div class="foot-links">
           <a class="btn sm" href="https://github.com/dotimothy/neat-change-studio"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Neat Change Studio</a>
-          <a class="btn sm" href="https://huggingface.co/dotimothy/sima-cyws"><svg class="ic" aria-hidden="true"><use href="#i-cube"/></svg>Models</a>
+          <a class="btn sm" href="https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b"><svg class="ic" aria-hidden="true"><use href="#i-cube"/></svg>Models</a>
           <a class="btn sm" href="https://github.com/dotimothy/neat-decision-studio"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Neat Decision Studio</a>
           <a class="btn sm" href="https://github.com/ragavsachdeva/The-Change-You-Want-to-See"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Upstream CYWS</a>
+          <a class="btn sm" href="https://github.com/facebookresearch/dinov2"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg>Upstream DINOv2</a>
         </div>
       </div>
       <div class="card">
         <h3 class="card-title">Citation</h3>
-        <p class="small">If you use CYWS, please cite the paper.</p>
+        <p class="small">If you use CYWS, please cite the paper. For the DINOv2 model, cite <a href="https://github.com/facebookresearch/dinov2">DINOv2</a> (Oquab et al., TMLR 2024).</p>
         <div class="code">
           <div class="code-head"><span class="where"><i></i>BibTeX</span><button type="button" class="copy-btn"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> BibTeX</span></button></div>
 <pre class="wrap-pre"><code>@inproceedings{sachdeva2023change,

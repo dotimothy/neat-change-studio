@@ -2,13 +2,13 @@
 
 <p align="center"><img src="docs/assets/brand/neat-change.svg" alt="Neat Change Studio logo: a before frame and an after frame, with a new object boxed, and the Neat sparkle" width="128"></p>
 
-Before/after change detection with CYWS on the SiMa.ai Modalix MLA, through NEAT.
+Before/after change detection on the SiMa.ai Modalix MLA, through NEAT: with CYWS, trained for change detection, or with DINOv2, zero-shot.
 
 ## Install
 
 Three commands on a Modalix DevKit with the NEAT SDK and its `pyneat` environment (see [What you need](#what-you-need)), with internet access for the first install.
 
-**01 Install.** Fetch the source into `./neat-change-studio`. The download is light, about 4 MB, with no models and none of the project page's screenshots. You download a model in step 02 or later from the web demo (Settings → Model):
+**01 Install.** Fetch the source into `./neat-change-studio`. The download is light, about 4 MB, with no models and none of the project page's screenshots. You download a model in step 02 or later from the web demo (Models):
 
 ```bash
 cd /media/nvme && curl -fsSL https://raw.githubusercontent.com/dotimothy/neat-change-studio/main/install.sh | bash
@@ -26,7 +26,7 @@ It checks the `pyneat` venv (`~/pyneat`, or `PYNEAT_VENV`) and installs the Pyth
 
 | variable | meaning |
 |---|---|
-| `CYWS_MODELS=bf16\|w8a16\|all\|none` | models to download. Default in a terminal: bf16 (asked only while the models directory has none); without a terminal: none |
+| `CYWS_MODELS=bf16\|w8a16\|dinov2-448\|all\|none` | models to download (a comma-separated list works too). Default in a terminal: bf16 (asked only while the models directory has none); without a terminal: none |
 | `CREATE_ALIAS=1\|0` | the `neat-change` alias in `~/.bashrc` (when there is one), the first of `~/.bash_profile`, `~/.bash_login` and `~/.profile` that exists (`~/.bash_profile` when none does), and `~/.zshrc` when your shell is zsh. Default in a terminal: yes; without a terminal: 0 |
 | `CREATE_DESKTOP_ICON=1\|0` | the desktop icon and menu entry. Default without a terminal: 0 |
 
@@ -42,7 +42,7 @@ neat-change --stop
 ./run.sh --mode dataset --dataset-dir data/testCYWS --out out/testcyws         # a whole dataset, with metrics against the GT masks
 ```
 
-Only one app may use the MLA at a time, so stop other demos first. `run.sh` activates `~/pyneat` (or `PYNEAT_VENV`) and defaults to `--model-path <models directory>/cyws_bf16_mpk.tar.gz` (or the only model there).
+Only one app may use the MLA at a time, so stop other demos first. `run.sh` activates `~/pyneat` (or `PYNEAT_VENV`) and defaults to `--model-path <models directory>/cyws_bf16_mpk.tar.gz` (or the only `cyws_*_mpk.tar.gz` there). The CLI runs CYWS only; the DINOv2 model is for the web demo.
 
 **Update.**
 
@@ -54,23 +54,35 @@ This downloads the latest `install.sh` and runs it with `STUDIO_UPDATE=1`, which
 
 ### Models
 
-The compiled models are on Hugging Face at [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws): `bf16` (119 MB, the default, most accurate) and `w8a16` (72 MB, faster).
+The compiled models are on Hugging Face, one repository per model family:
+
+| model | family | repository | size | MLA time | testCYWS: changes found, pixel F1, false-alarm pairs |
+|---|---|---|---|---|---|
+| `bf16` (the default) | CYWS, trained | [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws) | 119 MB | 35.2 ms per window pair | 33 / 47, 0.587, 2 / 15 |
+| `w8a16` | CYWS, trained | [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws) | 72 MB | 27.2 ms per window pair | 31 / 47, 0.581, 3 / 15 |
+| `dinov2-448` | DINOv2, zero-shot | [dotimothy/sima-dinov2](https://huggingface.co/dotimothy/sima-dinov2) | 77 MB | 24.5 ms per image | 28 / 47, 0.614, 2 / 15 |
+
+The settings of both families were tuned on the testCYWS pairs themselves, so these numbers are optimistic for new scenes (see [DINOv2, zero-shot](#dinov2-zero-shot)).
 
 They are kept in one **models directory**, shared by every install and left alone by updates, like Neat GenAI Studio's `/media/nvme/llima/models`. It is `/media/nvme/models/cyws` on a DevKit (`models/` in the app when there is no `/media/nvme`). `./setup.sh --models-dir DIR` moves it and remembers the choice (in `.models-dir`) for the web demo, the CLI and the alias; `CYWS_MODELS_DIR=DIR` does the same for one command; `./setup.sh --models-dir default` goes back. Setup names any models left in an app's own `models/` folder and the `mv` that brings them over. Besides `./setup.sh`, these download into it:
 
 ```bash
-webapp/run.sh --fetch bf16        # or w8a16, or all
+webapp/run.sh --fetch bf16        # or w8a16, dinov2-448, or all
 webapp/run.sh --list-hub          # what Hugging Face has, what is here, and the space used
 webapp/run.sh --verify all        # check the models here against their published SHA-256
 webapp/run.sh --delete w8a16      # delete a model (not the one the running demo has loaded)
 ```
 
-The web demo manages them too, under **Settings → Model**, like Neat GenAI Studio's model manager:
+The web demo manages them too, in the **Models** window (the chip button in the header, the status pill, or ☰ → Models on a phone), like the model managers of Neat Decision Studio and Neat GenAI Studio. It has three tabs: **Models** (what is on the board), **Add Model** (what Hugging Face has that the board doesn't) and **About**. Each model has a card with its state and these actions:
+- **Load:** puts the model on the MLA. One model is on the MLA at a time, so Load switches to it.
+- **Unload:** frees the MLA for other apps. Detection is off until a model is loaded again.
 - **Download:** fetches a model, with progress, cancel and resume. Every download is checked against its SHA-256.
 - **Verify:** checks a model against its published SHA-256 (about a second on the board).
 - **Re-download:** fetches a fresh copy. The old file stays in use until the new one has arrived and passed its check, so a failed re-download loses nothing.
-- **Delete:** removes the model after asking. The loaded model can't be deleted; load another one first.
-- **Storage:** shows how many models are on the board, the space they use, the free space, and which folder they are in.
+- **Delete:** removes the model after asking. The loaded model can't be deleted; unload it first.
+- **Model Card:** the model's facts: family and architecture, input, precision, latency, accuracy on testCYWS, size, source and license.
+
+The window also shows the storage: how many models are on the board, the space they use, the free space, and which folder they are in.
 
 To compile the model yourself instead, see [Compile the model](#compile-the-model).
 
@@ -91,6 +103,19 @@ Then, on the board, `cd /media/nvme/cyws`, `webapp/run.sh --fetch bf16` (unless 
 Give it a **before** photo and an **after** photo of the same scene. It returns boxes around what changed (labelled *appeared*, *disappeared* or *changed*), a change mask and an overlay. The model is the original **"The Change You Want to See"** (Sachdeva & Zisserman, WACV 2023; [paper code](https://github.com/ragavsachdeva/The-Change-You-Want-to-See)): a Siamese ResNet-50 U-Net with co-attention and a CenterNet head. It runs on the Modalix MLA through NEAT (`pyneat`) as **one MLA ELF with no A65 stages**, at about 35 ms per 256×256 pair in bf16.
 
 High-resolution photos are tiled. One global window runs first, then 256-input tiles are run only where the global view saw some change. This lets small objects be found at the scale the model was trained on.
+
+### DINOv2, zero-shot
+
+The second model family needs no change-detection training at all. [DINOv2](https://github.com/facebookresearch/dinov2) (Meta) ViT-S/14 with 4 registers is a general image feature extractor, compiled to **one MLA ELF with no A65 stage** (4 EV74 plugins). It takes one 448×448 image and returns a feature for each of its 32×32 patches, in 24.5 ms on the MLA (50 images/s, 14.0 W); its features match PyTorch FP32 to a patch cosine of 0.994 (0.997 centred). Both photos go through it, and so do overlapping tiles of them, which show small objects larger. A patch of the after photo with no similar patch nearby in the before photo is new; a patch of the before photo with no similar patch nearby in the after photo is gone. The score map becomes a mask and boxes, labelled like CYWS's.
+
+| on testCYWS (28 pairs, 47 changes, 15 no-change pairs) | changes found | pixel F1 | false-alarm pairs |
+|---|---|---|---|
+| DINOv2, whole photo only (board bf16) | 27 / 47 | 0.566 | 1 / 15 |
+| DINOv2, whole photo + 0.6 tiles (Balanced) | 28 / 47 | 0.614 | 2 / 15 |
+| DINOv2, + tiles, recall-leaning (threshold 0.35) | 30 / 47 | 0.603 | 3 / 15 |
+| CYWS bf16, Balanced | 33 / 47 | 0.587 | 2 / 15 |
+
+These settings were tuned on the same pairs, for both models, so the numbers are optimistic for new scenes. In the web demo DINOv2 shares the controls: the presets (Fast: the whole photo; Balanced: plus tiles where the whole photo saw a change; Accurate: tiles everywhere, threshold 0.35), the threshold, the windows and photo alignment. Its MLA time is per image, so a pair is two images per window. The DINOv2 port, its compile and its evaluation are in a sibling project; the model card on [dotimothy/sima-dinov2](https://huggingface.co/dotimothy/sima-dinov2) has the input and output contract.
 
 It is a sibling of [Neat Decision Studio](https://github.com/dotimothy/neat-decision-studio). The compiled models are on Hugging Face in the collection [SiMa.ai Change Detection Models](https://huggingface.co/collections/dotimothy/simaai-change-detection-models-6ada4e701e447e9db528596b). Results and measurements are in [report.md](report.md). The project page is at **[timothydo.me/neat-change-studio](https://timothydo.me/neat-change-studio/)**.
 
@@ -184,9 +209,9 @@ Pick a test pair or upload two photos (on a phone you can take them with the cam
 
 ![The webcam panel: a 3 s countdown captures Before, the scene changes, After is captured and detected, then Watch Live keeps detecting while a small live preview floats over the result](docs/webcam.gif)
 
-**Models.** Settings → Model lists the compiled models on Hugging Face. A model that isn't on the board downloads with progress and a checksum check, and picking one switches the MLA over.
+**Models.** The Models window lists the models on the board and, under Add Model, the ones on Hugging Face (CYWS and DINOv2). A model that isn't on the board downloads with progress and a checksum check, and Load switches the MLA over to it; Unload frees the MLA. Each card has a Model Card with the model's facts. (The recording below is of the earlier model list in Settings.)
 
-![Settings → Model: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up](docs/models.gif)
+![The model switch: bf16 is loaded, w8a16 is picked, and the switch card steps through releasing the MLA, loading the model and warming up](docs/models.gif)
 
 **On a phone.** The same page, with a tab bar. The header has buttons for full screen and for dark or light mode, and the ☰ menu has both too. Where the browser has no full-screen support (iPhone Safari), full screen hides the header and the metric chips instead; adding the page to the home screen opens it full screen (the demo has a web app manifest).
 
@@ -211,11 +236,11 @@ The `onnx` backend uses `build/onnx/cyws_fused.onnx`, which `model/fetch_upstrea
 | flag | meaning |
 |---|---|
 | `--port 8098` | port for both HTTP and HTTPS |
-| `--model bf16\|w8a16` | model to load at start |
+| `--model bf16\|w8a16\|dinov2-448` | model to load at start (when its file is missing, the demo starts with no model loaded) |
 | `--models DIR` | where the MPKs are (default `models/`) |
 | `--data DIR` | test pairs to offer (default `data/testCYWS`) |
 | `--backend neat\|onnx\|fake` | board MLA, host ONNX FP32, or a synthetic stand-in |
-| `--hub-repo REPO` | Hugging Face repository to list models from (default `dotimothy/sima-cyws`; `''` turns the catalog off) |
+| `--hub-repo REPO,…` | Hugging Face repositories to list models from, comma-separated (default `dotimothy/sima-cyws,dotimothy/sima-dinov2`; `''` turns the catalog off) |
 | `--fetch NAME…` | download these models into `--models` and exit (`all` for every one) |
 | `--list-hub` | list the models on Hugging Face, and which are here, and exit |
 | `--verify NAME…` | check these models against their published SHA-256 and exit (`all` for every one here) |
@@ -223,10 +248,10 @@ The `onnx` backend uses `build/onnx/cyws_fused.onnx`, which `model/fetch_upstrea
 | `--no-https` | plain HTTP only |
 
 **Models from Hugging Face:**
-- **Settings → Model** lists the models on [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws), as Neat GenAI Studio and Decision Studio do. A model that isn't on the board shows a **Download** button.
+- The **Models** window's Add Model tab lists the models on [dotimothy/sima-cyws](https://huggingface.co/dotimothy/sima-cyws) and [dotimothy/sima-dinov2](https://huggingface.co/dotimothy/sima-dinov2), as Neat GenAI Studio and Decision Studio do. A model that isn't on the board shows a **Download** button.
 - A download fetches the model into the models directory, with progress, cancel and resume, and checks its SHA-256 before the model can be loaded.
-- A model on the board has **Verify**, **Re-download** and **Delete** buttons, and a storage bar shows the space the models use.
-- On a fresh board, the first model downloaded loads by itself.
+- A model on the board has **Load** (or **Unload** when it is on the MLA), **Verify**, **Re-download** and **Delete** buttons, and a storage bar shows the space the models use.
+- On a fresh board, the first model downloaded loads by itself. `POST /api/models/unload` and `POST /api/models/load {name}` do the same as the buttons.
 
 The right-hand panel collapses with the round button on its edge, and the header's Settings button opens it at Settings.
 
@@ -306,6 +331,8 @@ There are two inputs, always pushed together and in this order:
 
 There is one fused output, `(10, 256, 256)` float32, with channels `heat_b, heat_a, wh_b(w,h), wh_a(w,h), off_b(x,y), off_a(x,y)`. The heat channels are already passed through a sigmoid.
 
+**DINOv2** (`dinov2-448`) has one input, a float32 448×448×3 HWC image, RGB, pixel / 255 (the ImageNet mean/std is inside the model), and one output, `(1, 384, 1, 1029)` float32: the class token, 4 registers and 32×32 patch tokens, row by row.
+
 ## Layout
 
 | path | what |
@@ -317,7 +344,7 @@ There is one fused output, `(10, 256, 256)` float32, with channels `heat_b, heat
 | `data/` | Dataset download from a manifest, dataset inspection, calibration tensors. |
 | `eval/` | Raw-output comparison against FP32, GPU backend, inference cache, parameter sweep. |
 | `bench/` | `bench_on_board.py`: streamed throughput and `Model.benchmark` on the DevKit. |
-| `tools/` | `publish_hub.py`, for maintainers: uploads the MPKs to Hugging Face and regenerates `models.json` (the list the app reads) and the model card. Needs `huggingface_hub` and write access to the repository. |
+| `tools/` | `publish_hub.py`, for maintainers: uploads the MPKs to Hugging Face and regenerates `models.json` (the list the app reads) and the model card, per family (`--family cyws\|dinov2`). Needs `huggingface_hub` and write access to the repository; `--dry-run DIR` writes the two files locally instead. |
 | `results/` | Small result files behind the numbers in the report: the parameter sweep (`sweep_RESULTS.md`) and the board-vs-FP32 comparisons (`eval/`). |
 | `tests/` | pytest suite (host, no board needed). |
 | `install.sh`, `setup.sh`, `run.sh`, `deploy.sh`, `run_all.sh` | install or update on the board, board setup (packages, model, certificate, alias, desktop icon), CLI runner, deploy from a host, full reproduction. |
@@ -331,6 +358,7 @@ Apache License 2.0 ([LICENSE](LICENSE), [NOTICE](NOTICE)).
 CYWS is by Ragav Sachdeva and Andrew Zisserman (The Change You Want to See, WACV 2023, https://github.com/ragavsachdeva/The-Change-You-Want-to-See). The authors have confirmed to the maintainer (2026) that CYWS, its code and pretrained weights, is released under the Apache License 2.0. This supersedes the CC BY-NC default mentioned in upstream issue #11 (2024). The upstream repository does not include a LICENSE file yet.
 
 - **Derived files:** the checkpoint, the ONNX files and the compiled MPKs are derived from the authors' pretrained weights and are also Apache-2.0. None of them is in this repository; the MPKs are on [Hugging Face](https://huggingface.co/dotimothy/sima-cyws).
+- **DINOv2:** its code and pretrained weights are by Meta Platforms, Inc. (https://github.com/facebookresearch/dinov2), under the Apache License 2.0. The compiled `dinov2-448` model is derived from those weights and is Apache-2.0 too; it is on [Hugging Face](https://huggingface.co/dotimothy/sima-dinov2).
 - **This repository's code** is Apache-2.0.
 - **Fonts:** Inter and JetBrains Mono, in the web demo, are under the SIL Open Font License 1.1.
 - **Trademarks:** SiMa.ai, Modalix, Neat and the logos in `webapp/web/assets` are trademarks of SiMa.ai and are not covered by the Apache License.
@@ -343,5 +371,16 @@ CYWS is by Ragav Sachdeva and Andrew Zisserman (The Change You Want to See, WACV
   author={Sachdeva, Ragav and Zisserman, Andrew},
   booktitle={Winter Conference on Applications of Computer Vision (WACV)},
   year={2023}
+}
+```
+
+For the DINOv2 model:
+
+```bibtex
+@article{oquab2023dinov2,
+  title={DINOv2: Learning Robust Visual Features without Supervision},
+  author={Oquab, Maxime and Darcet, Timoth{\'e}e and Moutakanni, Th{\'e}o and others},
+  journal={Transactions on Machine Learning Research},
+  year={2024}
 }
 ```
