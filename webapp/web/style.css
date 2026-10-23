@@ -1292,15 +1292,18 @@ table.all .tdot.none { background: var(--text-3); }
 #btn-settings[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .rail-toggle { display: none; }
 @media (min-width: 1024px) {
-  .rail { transition: flex-basis .32s cubic-bezier(.2,.7,.3,1), width .32s cubic-bezier(.2,.7,.3,1), padding .32s ease, opacity .2s ease, border-color .32s; }
-  .workspace.rail-collapsed .rail { flex-basis: 0; width: 0; padding-left: 0; padding-right: 0; opacity: 0; border-left-color: transparent; overflow: hidden; }
+  /* The panel keeps its width and slides off the right edge (its cards don't reflow on the
+     way); the negative margin hands its space to the viewer at the same pace. */
+  .workspace { overflow-x: clip; }
+  .rail { --rail-ease: cubic-bezier(.45, 0, .2, 1); transition: margin-right .42s var(--rail-ease), opacity .3s ease, transform .42s var(--rail-ease); }
+  .workspace.rail-collapsed .rail { margin-right: calc(-1 * var(--rail-w)); opacity: 0; transform: translateX(24px); transition: margin-right .42s var(--rail-ease), opacity .24s ease .08s, transform .42s var(--rail-ease); }
   .rail-toggle {
     display: grid; place-items: center; position: absolute; z-index: 20; top: 22px; right: calc(var(--rail-w) - 14px);
     width: 28px; height: 28px; border-radius: 50%; padding: 0; border: 1px solid var(--border); background: var(--surface);
-    color: var(--text-2); box-shadow: var(--shadow-md); transition: right .32s cubic-bezier(.2,.7,.3,1), color .15s ease, transform .15s ease;
+    color: var(--text-2); box-shadow: var(--shadow-md); transition: right .42s cubic-bezier(.45, 0, .2, 1), color .15s ease, transform .15s ease;
   }
   .rail-toggle:hover { color: var(--accent); transform: scale(1.08); }
-  .rail-toggle svg { width: 14px; height: 14px; stroke-width: 2.4; transition: transform .32s ease; }
+  .rail-toggle svg { width: 14px; height: 14px; stroke-width: 2.4; transition: transform .42s cubic-bezier(.45, 0, .2, 1); }
   .workspace.rail-collapsed .rail-toggle { right: 10px; }
   .workspace.rail-collapsed .rail-toggle svg { transform: rotate(180deg); }
 }
