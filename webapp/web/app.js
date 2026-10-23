@@ -761,7 +761,7 @@ async function openCam() {
   if (cam.live) { $("#cam-stop").focus(); return; }
   cam.ret = document.activeElement;
   el.hidden = false;
-  el.classList.remove("live");
+  el.classList.remove("live", "min");
   $(".cam-panel").setAttribute("aria-modal", "true");
   renderCam();
   if (!camSupported()) { camUnavailable(); return; }
@@ -1215,6 +1215,8 @@ function startLive() {
   cam.live = true; cam.liveSrc = null; cam.frames = [];
   $("#cam-fps").textContent = "";
   $("#cam").classList.add("live");
+  $("#cam").classList.toggle("min", cam.min);
+  renderCamMin();
   $(".cam-panel").setAttribute("aria-modal", "false");
   if (mq.phone.matches) setTab("detect");
   if (mq.tablet.matches && !mq.phone.matches) setDrawer(false);
@@ -1225,12 +1227,46 @@ function startLive() {
 function stopLive() {
   if (!cam.live) return;
   cam.live = false;
-  $("#cam").classList.remove("live");
+  $("#cam").classList.remove("live", "min");
   stopStream();
   $("#cam").hidden = true;
   // keep the last live pair in the composer; the next capture starts fresh
   for (const r of ["before", "after"]) { revokeIfUnused(cam.urls[r]); cam.urls[r] = null; cam.shots[r] = null; }
   updateComposer();
+}
+
+/* Live preview collapse: the docked preview folds into its header strip and back, with the
+   stage's height animated (it is sized by the video's aspect ratio, so CSS can't tween it).
+   Remembered in this browser. */
+cam.min = store.get("cyws-cam-min") === "1";
+function renderCamMin() {
+  const b = $("#cam-min");
+  b.setAttribute("aria-expanded", String(!cam.min));
+  b.title = cam.min ? "Show the Preview" : "Collapse the Preview";
+  b.setAttribute("aria-label", cam.min ? "Show the live preview" : "Collapse the live preview");
+}
+function toggleCamMin() {
+  if (!cam.live) return;
+  const el = $("#cam"), stage = $("#cam-stage");
+  cam.min = !cam.min;
+  store.set("cyws-cam-min", cam.min ? "1" : "0");
+  renderCamMin();
+  if (stage.getAnimations) stage.getAnimations().forEach((a) => a.cancel());
+  const gap = parseFloat(getComputedStyle($(".cam-panel")).rowGap) || 0;
+  const fold = (h) => [{ height: `${h}px`, opacity: 1, marginTop: "0px" }, { height: "0px", opacity: 0, marginTop: `${-gap}px` }];
+  const opts = { duration: 320, easing: "cubic-bezier(.45, 0, .2, 1)" };
+  if (cam.min) {
+    const h = stage.getBoundingClientRect().height;
+    if (mq.still.matches || !stage.animate || !h) { el.classList.add("min"); return; }
+    stage.style.overflow = "hidden";
+    stage.animate(fold(h), opts).finished.then(() => { if (cam.min) el.classList.add("min"); }, () => {}).finally(() => { stage.style.overflow = ""; });
+  } else {
+    el.classList.remove("min");
+    const h = stage.getBoundingClientRect().height;
+    if (mq.still.matches || !stage.animate || !h) return;
+    stage.style.overflow = "hidden";
+    stage.animate(fold(h).reverse(), opts).finished.catch(() => {}).finally(() => { stage.style.overflow = ""; });
+  }
 }
 
 /* Wait until the run queue is idle (the job asked for and anything queued behind it). */
@@ -2267,6 +2303,7 @@ function bind() {
     navigator.mediaDevices.addEventListener("devicechange", () => { cam.missing = false; renderCamSetting(); });
   }
   renderCamSetting();
+  $("#cam-min").addEventListener("click", toggleCamMin);
   $("#cam-ghost-btn").addEventListener("click", () => { cam.ghost = !cam.ghost; renderCam(); });
   $("#cam-timer").addEventListener("click", cycleTimer);
   $("#cam-align-btn").addEventListener("click", toggleAlign);

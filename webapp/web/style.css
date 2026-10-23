@@ -1102,7 +1102,20 @@ table.all .tdot.none { background: var(--text-3); }
 #cam-ghost-btn[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 
 /* live: the panel becomes a small floating preview, results update in the viewer */
-.cam.live { inset: auto calc(var(--rail-w) + 28px) 112px auto; padding: 0; display: block; }
+/* docked flush with the right edge of the bar below (the main column's 16px padding), and it
+   follows the side panel as it slides in or out */
+.cam.live { inset: auto calc(var(--rail-w) + 16px) 112px auto; padding: 0; display: block; transition: right .42s cubic-bezier(.45, 0, .2, 1); }
+@media (min-width: 1024px) { body:has(.workspace.rail-collapsed) .cam.live { right: 16px; } }
+/* collapse: the preview folds into its header strip (LIVE · fps, collapse, close) */
+.cam:not(.live) .cam-min { display: none; }
+.cam-min svg { transform: rotate(90deg); transition: transform .3s cubic-bezier(.45, 0, .2, 1); }
+.cam.live.min .cam-min svg { transform: rotate(-90deg); }
+.cam.live.min .cam-stage { display: none; }
+.cam.live .cam-live-badge { white-space: nowrap; flex: none; }
+.cam.live .cam-head { gap: 8px; }
+.cam.live .cam-head-actions { gap: 4px; }
+.cam.live .cam-head .icon-btn { width: 32px; height: 32px; }
+.cam.live .cam-head .icon-btn svg { width: 16px; height: 16px; }
 .cam.live .cam-scrim, .cam.live .cam-foot, .cam.live .cam-actions, .cam.live .cam-step, .cam.live .cam-guide, .cam.live .cam-ghost, .cam.live #cam-flip, .cam.live .cam-align, .cam.live .cam-align-pill { display: none; }
 .cam.live .cam-panel { width: 240px; padding: 10px; gap: 8px; animation: cam-dock .35s cubic-bezier(.2,.7,.3,1) both; }
 .cam.live .cam-stage { max-height: none; border-radius: 10px; }
@@ -1308,3 +1321,9 @@ table.all .tdot.none { background: var(--text-3); }
   .workspace.rail-collapsed .rail-toggle svg { transform: rotate(180deg); }
 }
 @media (prefers-reduced-motion: reduce) { .rail, .rail-toggle, .rail-toggle svg { transition: none; } }
+
+/* the docked live preview on tablets and phones: room for LIVE · fps, collapse and close */
+@media (max-width: 1023px) {
+  .cam.live .cam-title { display: none; }
+  .cam.live .cam-panel { width: 224px; }
+}
