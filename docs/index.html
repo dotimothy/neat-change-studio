@@ -197,8 +197,16 @@
           <ul class="ticks">
             <li>uv, Python 3 and PyTorch on the host.</li>
             <li>The SiMa Neat SDK container with the Model Compiler.</li>
-            <li><code>./run_all.sh</code> reproduces everything on the host: venv, dataset, upstream code and checkpoint, reference check, ONNX export, probe compiles, calibration, the bf16/w8a16 compile and the FP32 reference, then the board evaluation. The board steps need <code>BOARD=sima@&lt;devkit-ip&gt;</code> and passwordless ssh; <code>SKIP_BOARD=1</code> skips them.</li>
-          </ul>
+            </ul>
+          <p class="small">The bf16 model needs no calibration photos. From the repo, on an x86 host (about 10 minutes):</p>
+          <div class="code">
+            <div class="code-head"><span class="where"><i></i>Host</span><button type="button" class="copy-btn" data-copy="STEPS=setup ./run_all.sh &amp;&amp; model/fetch_upstream.sh &amp;&amp; .venv/bin/python model/export_onnx.py &amp;&amp; compile/compile.sh --precision bf16 --out build/bf16"><svg class="ic ic-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ic ic-check" aria-hidden="true"><use href="#i-check"/></svg><span class="lbl">Copy</span><span class="sr-only"> Compile Commands</span></button></div>
+<pre><code><span class="p">$ </span>STEPS=setup ./run_all.sh
+<span class="p">$ </span>model/fetch_upstream.sh
+<span class="p">$ </span>.venv/bin/python model/export_onnx.py
+<span class="p">$ </span>compile/compile.sh --precision bf16 --out build/bf16</code></pre>
+          </div>
+          <p class="small">This writes <code>build/bf16/cyws_bf16_mpk.tar.gz</code> (one MLA ELF, no A65 stage). <code>./run_all.sh</code> reproduces everything, including w8a16 (which needs your own before/after photos for calibration) and the board evaluation. <a href="https://github.com/dotimothy/neat-change-studio#compile-the-model">Step-by-step guide</a>.</p>
         </div>
       </div>
 

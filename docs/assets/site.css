@@ -623,3 +623,7 @@ html.lb-lock { overflow: hidden; }
 .phone-media { display: grid; grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr); gap: 12px; align-items: center; }
 .phone-media .phone-vid video, .phone-media .phone-vid img { aspect-ratio: 390 / 844; height: auto; }
 @media (max-width: 600px) { .phone-media { grid-template-columns: minmax(0, 0.55fr) minmax(0, 1fr); gap: 8px; } }
+
+/* the compile commands inside "To Build the Model" */
+.req-group > .small { margin: 14px 0 10px; }
+.req-group > .code + .small { margin-top: 10px; }

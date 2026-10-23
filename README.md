@@ -70,7 +70,9 @@ The web demo manages them too, under **Settings → Model**, like Neat GenAI Stu
 - **Verify:** checks a model against its published SHA-256 (about a second on the board).
 - **Re-download:** fetches a fresh copy. The old file stays in use until the new one has arrived and passed its check, so a failed re-download loses nothing.
 - **Delete:** removes the model after asking. The loaded model can't be deleted; load another one first.
-- **Storage:** shows how many models are on the board, the space they use, the free space, and which folder they are in. To compile the model yourself, see [Building it from scratch](#building-it-from-scratch).
+- **Storage:** shows how many models are on the board, the space they use, the free space, and which folder they are in.
+
+To compile the model yourself instead, see [Compile the model](#compile-the-model).
 
 ### From a host instead: deploy.sh
 
@@ -101,7 +103,7 @@ It is a sibling of [Neat Decision Studio](https://github.com/dotimothy/neat-deci
 - ssh from the host to the board (passwordless is easiest; `deploy.sh` and `run_all.sh` use ssh and rsync).
 - On the board, numpy, OpenCV (4.4 or later, for SIFT) and Pillow in the pyneat venv, and Flask for the web demo. `./setup.sh` checks them and installs what is missing ([requirements.txt](requirements.txt)).
 
-**To build the model from scratch** (not needed if you download it):
+**To compile the model** (not needed if you download it; see [Compile the model](#compile-the-model)):
 - [uv](https://docs.astral.sh/uv/) and Python 3 on the host, with PyTorch installed. `run_all.sh` makes `.venv` with `--system-site-packages`, so it reuses that PyTorch; the other host packages are in [requirements-dev.txt](requirements-dev.txt).
 - The SiMa NEAT SDK container with the Model Compiler. `compile/compile.sh` runs the compiler with `docker exec` in the container named by `CONTAINER` (default `ghcr.io-sima-neat-sdk-latest`). The repo must be under the host folder mounted as the container's `/workspace`, given by `WS_HOST` (default `~/SDK/NEAT/workspace`).
 - `pyneat` comes from the NEAT SDK, and `afe` / `sima_utils` from the Model Compiler container. Neither is on PyPI.
@@ -230,9 +232,62 @@ The right-hand panel collapses with the round button on its edge, and the header
 
 **Webcam:** the webcam button captures Before, then After, from the browser's camera and detects. **Watch Live** compares every new frame with Before and updates the view (about 2 frames/s on the board with a 1080p webcam, most of it capture and upload). Browsers only allow the camera on HTTPS pages, so port 8098 speaks both HTTP and HTTPS (the server checks whether each connection starts with a TLS handshake). `./setup.sh` (or `webapp/run.sh` on first start) makes a self-signed certificate in `webapp/certs/` with `openssl` (`webapp/make_cert.sh`), so the browser warns about it once. `server.py` run directly uses `--cert` / `--key` (default `webapp/certs/cert.pem` and `key.pem`) if they exist, and serves HTTP only otherwise. The plain-HTTP page links to the HTTPS one when you open the webcam. `--no-https` turns HTTPS off.
 
-## Building it from scratch
+## Compile the model
 
-`./run_all.sh` reproduces everything on the host, in order: venv → dataset → upstream code + checkpoint → reference check → ONNX export → probe compiles → calibration → bf16/w8a16 compile → FP32 reference → board evaluation. `SKIP_BOARD=1` skips the board, and `STEPS="export compile"` runs only some steps. The board steps need `BOARD=sima@<devkit-ip>` and passwordless ssh. See [What you need](#what-you-need) for the host requirements.
+You don't need to: the compiled models are on Hugging Face (see [Models](#models)). Compile it yourself to check the build, or to change the model.
+
+This runs on an x86 host, not the board. You need:
+- PyTorch;
+- [uv](https://docs.astral.sh/uv/);
+- the SiMa NEAT SDK container with the Model Compiler, running and named `ghcr.io-sima-neat-sdk-latest` (or set `CONTAINER`);
+- this repo inside the folder the container mounts at `/workspace`, which is `~/SDK/NEAT/workspace` by default (or set `WS_HOST`).
+
+See [What you need](#what-you-need) for details.
+
+### bf16 (the shipped model, no photos needed)
+
+bf16 has no scales to fit, so it needs no calibration photos. Four commands, from the repo:
+
+```bash
+STEPS=setup ./run_all.sh                         # 1. host venv (.venv) with onnx, onnxsim, onnxruntime, ...
+model/fetch_upstream.sh                          # 2. upstream CYWS code and the pretrained checkpoint (checksum-checked)
+.venv/bin/python model/export_onnx.py            # 3. MLA-friendly rewrite -> build/onnx/cyws_fused.onnx
+compile/compile.sh --precision bf16 --out build/bf16    # 4. compile in the SDK container (about 10 minutes)
+```
+
+- **Step 2** puts the code in `third_party/` and the checkpoint in `build/ckpt/`. Both are gitignored.
+- **Step 3** loads the checkpoint strictly, rewrites the network for the MLA and exports ONNX (opset 17, simplified). It checks ONNX Runtime against PyTorch, and refuses any op outside the list the MLA compiles.
+- **Step 4** writes `build/bf16/cyws_bf16_mpk.tar.gz`, with `compile.log` and `compile_summary.json` next to it. It fails unless the MPK has exactly one MLA ELF and no A65 stage.
+
+Optionally, check the result:
+
+```bash
+.venv/bin/python model/verify_reference.py                    # the rewrite matches upstream CYWS
+.venv/bin/python compile/mpk_io.py build/bf16/cyws_bf16_mpk.tar.gz   # input order: in0_before, then in1_after
+```
+
+Then put it on the board. Either `BOARD=sima@<devkit-ip> ./deploy.sh build/bf16/cyws_bf16_mpk.tar.gz`, or copy it into the board's models directory (`/media/nvme/models/cyws`) yourself. It replaces the downloaded bf16 there.
+
+### w8a16 (needs your photos)
+
+int8 weights need **paired** calibration samples. Put your before/after pairs in `data/testCYWS` (or point `CYWS_DATA` at them), in the layout described in [Dataset](#dataset). Then:
+
+```bash
+.venv/bin/python model/export_onnx.py --outputs split         # separate heat/wh/offset outputs, so each gets its own scale
+.venv/bin/python data/make_calib.py                           # paired crops through the app's own preprocessing
+compile/compile.sh --model build/onnx/cyws_split.onnx --precision w8a16 \
+    --calib build/calib/calib_pairs.npz --calib-method min_max --out build/w8a16_minmax
+```
+
+### Everything, as in the report
+
+`./run_all.sh` runs every step in order:
+1. venv, dataset, upstream code and checkpoint;
+2. reference check, ONNX export, probe compiles;
+3. calibration, the bf16 and w8a16 compiles;
+4. the FP32 reference and the board evaluation.
+
+`SKIP_BOARD=1` skips the board steps. `STEPS="export compile"` runs only the steps you name. The board steps need `BOARD=sima@<devkit-ip>` and passwordless ssh.
 
 **Compilation notes:**
 - **bf16 setting:** bf16 needs `XLA_FLAGS=--xla_backend_extra_options=-vectorize-loops=false,-vectorize-slp=false`; `compile/compile.sh` sets it.
