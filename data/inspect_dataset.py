@@ -50,7 +50,8 @@ def main() -> int:
     for i, s in enumerate(stems):
         cap, mc = read(args.root / "images" / f"{s}_cap.jpg")
         ref, mr = read(args.root / "images" / f"{s}_ref.jpg")
-        mpath = args.root / "masks" / f"{s}.jpg"
+        mpath = next((args.root / "masks" / f"{s}{ext}" for ext in (".jpg", ".png", ".jpeg")
+                      if (args.root / "masks" / f"{s}{ext}").is_file()), args.root / "masks" / f"{s}.jpg")
         with Image.open(mpath) as m:
             m_raw = m.size
             m_orient = m.getexif().get(EXIF_ORIENTATION, 1)

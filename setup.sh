@@ -73,8 +73,10 @@ Sets up Neat Change Studio on the Modalix DevKit, in order:
      (numpy, opencv-python-headless with SIFT, pillow, flask)
   2. downloads a model from Hugging Face (dotimothy/sima-cyws, dotimothy/sima-dinov2)
      into the models directory (default /media/nvme/models/cyws, shared by every install)
-  3. makes the self-signed certificate the web demo serves HTTPS with
-  4. adds the 'neat-change' shell alias for webapp/run.sh, and a desktop icon
+  3. downloads the test pairs the web demo offers: 30 before/after photo pairs from
+     PASLCD (MIT License), about 28 MB, into data/paslcd
+  4. makes the self-signed certificate the web demo serves HTTPS with
+  5. adds the 'neat-change' shell alias for webapp/run.sh, and a desktop icon
      when the board has a desktop
 Safe to run again: what is already in place is kept.
 
@@ -90,6 +92,7 @@ Options:
   --models-dir DIR      Keep the models in DIR, and remember it (in .models-dir)
                         for run.sh, the web demo and the alias. 'default' goes
                         back to /media/nvme/models/cyws. Or CYWS_MODELS_DIR=DIR.
+  --no-pairs            Do not download the test pairs  (CYWS_PAIRS=0)
   --no-alias            Do not add the shell alias      (CREATE_ALIAS=0)
   --no-desktop-icon     Do not add the desktop icon     (CREATE_DESKTOP_ICON=0)
   --no-prompt           Never ask; decide as without a terminal
@@ -126,8 +129,10 @@ MODELS="${CYWS_MODELS-}"
 MODELS_SET=0; [[ -n "${CYWS_MODELS+x}" ]] && MODELS_SET=1
 WANT_ALIAS="${CREATE_ALIAS:-}"
 WANT_ICON="${CREATE_DESKTOP_ICON:-}"
+WANT_PAIRS="${CYWS_PAIRS:-1}"
 while (($#)); do
   case "$1" in
+    --no-pairs) WANT_PAIRS=0 ;;
     --check-only) CHECK_ONLY=1 ;;
     --check) CHECK=1 ;;
     --models) [[ $# -ge 2 ]] || { echo "--models needs a value" >&2; exit 2; }
@@ -317,8 +322,24 @@ else
     info "${C_BOLD}webapp/run.sh --fetch bf16${C_RESET}, or in the web demo under Models."
   fi
 fi
-[[ -d "$HERE/data/testCYWS" ]] && info "Test pairs: $HERE/data/testCYWS" \
-  || info "No test pairs in data/testCYWS (optional; see the README, \"Dataset\")."
+# The Test Set: before/after pairs from PASLCD (MIT License); see data/paslcd_pairs.tsv.
+PAIRS_DIR="$HERE/data/paslcd"
+n_pairs() { find "$PAIRS_DIR/images" -name '*_cap.jpg' 2> /dev/null | wc -l; }
+if [[ -n "${CYWS_DATA:-}" ]]; then
+  info "Test pairs: ${CYWS_DATA} (CYWS_DATA)"
+elif (( $(n_pairs) >= $(grep -cv '^#' "$HERE/data/paslcd_pairs.tsv") )); then
+  ok "Test pairs: $(n_pairs) from PASLCD in ${C_DIM}$PAIRS_DIR${C_RESET}"
+elif ((CHECK_ONLY)) || [[ "$WANT_PAIRS" == 0 ]]; then
+  info "No test pairs in $PAIRS_DIR yet; ${C_BOLD}data/fetch_paslcd.py${C_RESET} downloads them (about 28 MB)."
+else
+  step "Downloading the test pairs: PASLCD (MIT License), about 28 MB"
+  PAIRS_PY="$VENV/bin/python3"; [[ -x "$PAIRS_PY" ]] || PAIRS_PY=python3
+  if "$PAIRS_PY" "$HERE/data/fetch_paslcd.py" "$PAIRS_DIR" | tail -n 1; then
+    ok "Test pairs: $(n_pairs) in ${C_DIM}$PAIRS_DIR${C_RESET}"
+  else
+    warn "The test pairs did not download; the demo runs without them. Run ./setup.sh again to retry."
+  fi
+fi
 
 # --------------------------------------------------------------------------- web demo
 section "Web Demo"

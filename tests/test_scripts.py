@@ -425,3 +425,21 @@ def test_cli_never_picks_a_dinov2_mpk(tmp_path):
             env={"CYWS_MODELS_DIR": str(models), "PYNEAT_VENV": str(tmp_path / "none")}, cwd=tmp_path)
     assert r.returncode == 1
     assert "No CYWS model" in r.stderr and "dinov2" not in r.stdout
+
+
+def test_paslcd_pairs_manifest():
+    """The open test pairs: 30 unique ids, 20 change pairs (an after photo from the test
+    trajectory) and 10 no-change pairs (two before photos), every scene and instance."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("fetch_paslcd", ROOT / "data" / "fetch_paslcd.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    rows = mod.pairs()
+    assert len(rows) == 30 and len({r["id"] for r in rows}) == 30
+    change = [r for r in rows if r["kind"] == "change"]
+    same = [r for r in rows if r["kind"] == "same"]
+    assert len(change) == 20 and len(same) == 10
+    assert all("_test_" in r["after"] and "_test_" not in r["before"] for r in change)
+    assert all("_test_" not in r["after"] and "_test_" not in r["before"] for r in same)
+    assert {(r["scene"], r["instance"]) for r in change} == {(s, i) for s in {r["scene"] for r in rows} for i in "12"}
+    assert all(r["id"].replace("-", "").isalnum() for r in rows)      # no "_" to confuse <id>_ref / <id>_cap

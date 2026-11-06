@@ -9,7 +9,7 @@ and runs. The page shows the detected changes on the "after" image together with
 the heat map, the change mask, the ground truth (when the pair has one), per-stage
 timings and accuracy against the ground truth.
 
-    python3 webapp/server.py [--port 8098] [--model bf16] [--data data/testCYWS]
+    python3 webapp/server.py [--port 8098] [--model bf16] [--data data/paslcd]
 
 One MLA workload at a time: every pipeline run and every model switch holds one
 lock, and the backend itself serialises accelerator calls (common.ACCELERATOR_LOCK).
@@ -1058,7 +1058,7 @@ def main() -> int:
                     help="model to load at start: " + ", ".join(MODELS) + " (default bf16)")
     ap.add_argument("--models", default=str(default_models_dir()),
                     help="the models directory (default: CYWS_MODELS_DIR, .models-dir, /media/nvme/models/cyws, or models/)")
-    ap.add_argument("--data", default=os.environ.get("CYWS_DATA") or str(ROOT / "data/testCYWS"))
+    ap.add_argument("--data", default=os.environ.get("CYWS_DATA") or str(ROOT / "data/paslcd"))
     ap.add_argument("--cache", default=str(ROOT / "webapp/cache"))
     ap.add_argument("--uploads", default=str(ROOT / "webapp/uploads"))
     ap.add_argument("--backend", default="neat", choices=["neat", "onnx", "fake"],
