@@ -1,0 +1,41 @@
+# The test pairs Change Studio offers: before/after photos from PASLCD, the Pose-Agnostic
+# Scene-Level Change Detection dataset (Galappaththige et al., CVPR 2025; MIT License),
+# https://huggingface.co/datasets/ChamudithaJay/PASLCD. data/fetch_paslcd.py downloads them.
+#
+# Each scene was photographed before and after objects were moved, added or taken away, along
+# independent paths; every "after" photo has a hand-drawn change mask. A change pair is an
+# after photo and the before photo taken from the nearest viewpoint (COLMAP poses in the
+# dataset). A same pair is two before photos a few degrees apart: nothing changed, so any
+# detection is a false alarm. Instance 1 has steady lighting, instance 2 changed lighting.
+#
+# id	kind	scene	instance	before	after
+cantina-1-change	change	Cantina	1	Inst_1_IMG_3031.jpg	Inst_1_test_IMG_2865.jpg
+cantina-1-same	same	Cantina	1	Inst_1_IMG_3056.jpg	Inst_1_IMG_3097.jpg
+cantina-2-change	change	Cantina	2	Inst_2_IMG_3144.jpg	Inst_2_test_IMG_2880.jpg
+garden-1-change	change	Garden	1	Inst_1_IMG_E7338.JPG	Inst_1_test_IMG_E7258.JPG
+garden-1-same	same	Garden	1	Inst_1_IMG_E7328.JPG	Inst_1_IMG_E7332.JPG
+garden-2-change	change	Garden	2	Inst_2_IMG_E7473.JPG	Inst_2_test_IMG_E7237.JPG
+lounge-1-change	change	Lounge	1	Inst_1_IMG_3929.jpg	Inst_1_test_IMG_3858.jpg
+lounge-1-same	same	Lounge	1	Inst_1_IMG_3897.jpg	Inst_1_IMG_3929.jpg
+lounge-2-change	change	Lounge	2	Inst_2_IMG_3994.jpg	Inst_2_test_IMG_3859.jpg
+lunch-room-1-change	change	Lunch_room	1	Inst_1_IMG_3699.jpg	Inst_1_test_IMG_3536.jpg
+lunch-room-1-same	same	Lunch_room	1	Inst_1_IMG_3555.jpg	Inst_1_IMG_3787.jpg
+lunch-room-2-change	change	Lunch_room	2	Inst_2_IMG_3710.jpg	Inst_2_test_IMG_3522.jpg
+meeting-room-1-change	change	Meeting_room	1	Inst_1_IMG_1917.jpg	Inst_1_test_IMG_1874.jpg
+meeting-room-1-same	same	Meeting_room	1	Inst_1_IMG_1898.jpg	Inst_1_IMG_1901.jpg
+meeting-room-2-change	change	Meeting_room	2	Inst_2_IMG_1954.jpg	Inst_2_test_IMG_1868.jpg
+playground-1-change	change	Playground	1	Inst_1_IMG_E7104.JPG	Inst_1_test_IMG_E7031.JPG
+playground-1-same	same	Playground	1	Inst_1_IMG_E7097.JPG	Inst_1_IMG_E7160.JPG
+playground-2-change	change	Playground	2	Inst_2_IMG_E7170.JPG	Inst_2_test_IMG_E7034.JPG
+porch-1-change	change	Porch	1	Inst_1_IMG_E6569.JPG	Inst_1_test_IMG_E6683.JPG
+porch-1-same	same	Porch	1	Inst_1_IMG_E6562.JPG	Inst_1_IMG_E6610.JPG
+porch-2-change	change	Porch	2	Inst_2_IMG_E5835.JPG	Inst_2_test_IMG_E6637.JPG
+pots-1-change	change	Pots	1	Inst_1_IMG_E2723.JPG	Inst_1_test_IMG_E2675.JPG
+pots-1-same	same	Pots	1	Inst_1_IMG_E2739.JPG	Inst_1_IMG_E2783.JPG
+pots-2-change	change	Pots	2	Inst_2_IMG_E3039.JPG	Inst_2_test_IMG_E2658.JPG
+printing-area-1-change	change	Printing_area	1	Inst_1_IMG_2300.jpg	Inst_1_test_IMG_2232.jpg
+printing-area-1-same	same	Printing_area	1	Inst_1_IMG_2253.jpg	Inst_1_IMG_2304.jpg
+printing-area-2-change	change	Printing_area	2	Inst_2_IMG_2359.jpg	Inst_2_test_IMG_2228.jpg
+zen-1-change	change	Zen	1	Inst_1_IMG_E2876.JPG	Inst_1_test_IMG_E2842.JPG
+zen-1-same	same	Zen	1	Inst_1_IMG_E2852.JPG	Inst_1_IMG_E2908.JPG
+zen-2-change	change	Zen	2	Inst_2_IMG_E2958.JPG	Inst_2_test_IMG_E2837.JPG

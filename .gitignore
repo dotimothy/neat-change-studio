@@ -8,6 +8,7 @@ venv/
 
 # The private test photos; bring your own pairs (see README "Dataset")
 /data/testCYWS/
+/data/paslcd/
 data/*manifest*.tsv
 !data/testcyws_manifest.example.tsv
 

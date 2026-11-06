@@ -190,7 +190,26 @@ For every pair: `<id>_overlay.jpg`, `<id>_mask.png` and `<id>.json`. The JSON ho
 
 ## Dataset
 
-The numbers in [report.md](report.md) come from testCYWS, the author's private set of 28 before/after phone-photo pairs. It is not published, so bring your own pairs in this layout:
+**The Test Set** in the web demo is 30 before/after pairs from
+[PASLCD](https://huggingface.co/datasets/ChamudithaJay/PASLCD), the Pose-Agnostic Scene-Level
+Change Detection dataset (Galappaththige et al., CVPR 2025), which is under the MIT License. It covers
+10 indoor and outdoor scenes: a cantina, a garden, a lounge, a lunch room, a meeting room, a
+playground, a porch, plant pots, a printing area and a zen garden. Each scene was photographed
+before and after objects were moved, added or taken away, and every "after" photo has a
+hand-drawn change mask.
+- **Change pairs (20):** an after photo with the before photo taken from the nearest viewpoint
+  (from the dataset's camera poses), one per scene for each of its two lighting conditions.
+- **No-change pairs (10):** two before photos a few degrees apart. Any detection on them is a
+  false alarm.
+
+`setup.sh` downloads the pairs into `data/paslcd`: about 28 MB, scaled to the masks' 1600-pixel
+width. Use `--no-pairs` to skip this. To fetch or refresh them yourself, run
+`data/fetch_paslcd.py [DEST]`. [data/paslcd_pairs.tsv](data/paslcd_pairs.tsv) lists which photos
+make each pair, pinned to one dataset revision.
+
+**The numbers** in [report.md](report.md), and the tuned settings, come from testCYWS, the
+author's private set of 28 before/after phone-photo pairs. It is not published. To evaluate on it
+or on your own pairs, use this layout:
 
 ```
 data/testCYWS/
@@ -199,7 +218,7 @@ data/testCYWS/
   masks/<id>.jpg         change mask (optional; needed for metrics)
 ```
 
-The default location is `data/testCYWS` in the repo; set `CYWS_DATA` to use another folder (the scripts' `--dataset-dir` / `--data` flags also take a path). `deploy.sh --with-data` copies it to the board. If your pairs are on Google Drive, `data/download_testcyws.sh MANIFEST` fetches them file by file from a manifest you provide (see [data/testcyws_manifest.example.tsv](data/testcyws_manifest.example.tsv)).
+The scripts' default location is `data/testCYWS` in the repo, and the web demo's is `data/paslcd`. Set `CYWS_DATA` to use another folder (the scripts' `--dataset-dir` / `--data` flags also take a path). `deploy.sh --with-data` copies it to the board. If your pairs are on Google Drive, `data/download_testcyws.sh MANIFEST` fetches them file by file from a manifest you provide (see [data/testcyws_manifest.example.tsv](data/testcyws_manifest.example.tsv)).
 
 ## Web demo
 
@@ -252,8 +271,9 @@ Pick a test pair or upload two photos (on a phone you can take them with the cam
 On the host it can run without a board:
 
 ```bash
-.venv/bin/python webapp/server.py --backend onnx --data data/testCYWS
-.venv/bin/python webapp/server.py --backend fake --data data/testCYWS     # no model needed
+.venv/bin/python data/fetch_paslcd.py                                     # the test pairs, once
+.venv/bin/python webapp/server.py --backend onnx
+.venv/bin/python webapp/server.py --backend fake                         # no model needed
 ```
 
 The `onnx` backend uses `build/onnx/cyws_fused.onnx`, which `model/fetch_upstream.sh` and `model/export_onnx.py` make (or run `./run_all.sh` up to its `export` step).
@@ -265,7 +285,7 @@ The `onnx` backend uses `build/onnx/cyws_fused.onnx`, which `model/fetch_upstrea
 | `--port 8098` | port for both HTTP and HTTPS |
 | `--model bf16\|w8a16\|dinov2-448\|c3po-pcd\|c3po-csb` | model to load at start (when its file is missing, the demo starts with no model loaded) |
 | `--models DIR` | where the MPKs are (default `models/`) |
-| `--data DIR` | test pairs to offer (default `data/testCYWS`) |
+| `--data DIR` | test pairs to offer (default `$CYWS_DATA`, else `data/paslcd`) |
 | `--backend neat\|onnx\|fake` | board MLA, host ONNX FP32, or a synthetic stand-in |
 | `--hub-repo REPO,…` | Hugging Face repositories to list models from, comma-separated (default `dotimothy/sima-cyws,dotimothy/sima-dinov2`; `''` turns the catalog off) |
 | `--fetch NAME…` | download these models into `--models` and exit (`all` for every one) |
@@ -370,7 +390,7 @@ There is one fused output, `(10, 256, 256)` float32, with channels `heat_b, heat
 | `webapp/` | Browser demo (Flask), served from the board on port 8098. |
 | `model/` | Upstream fetch, the MLA-friendly rewrite (`cyws_mla.py`), the reference check and the ONNX export. |
 | `compile/` | Model Compiler driver (bf16 / w8a16 / int8), probes, MPK input-order check. |
-| `data/` | Dataset download from a manifest, dataset inspection, calibration tensors. |
+| `data/` | The test pairs (`fetch_paslcd.py`, `paslcd_pairs.tsv`), dataset download from a manifest, dataset inspection, calibration tensors. |
 | `eval/` | Raw-output comparison against FP32, GPU backend, inference cache, parameter sweep. |
 | `bench/` | `bench_on_board.py`: streamed throughput and `Model.benchmark` on the DevKit. |
 | `tools/` | `publish_hub.py`, for maintainers: uploads the MPKs to Hugging Face and regenerates `models.json` (the list the app reads) and the model card, per family (`--family cyws\|dinov2\|c3po`; C-3PO is not published, so only use `--dry-run` for it for now). Needs `huggingface_hub` and write access to the repository; `--dry-run DIR` writes the two files locally instead. |
@@ -378,7 +398,7 @@ There is one fused output, `(10, 256, 256)` float32, with channels `heat_b, heat
 | `tests/` | pytest suite (host, no board needed). |
 | `install.sh`, `setup.sh`, `run.sh`, `deploy.sh`, `run_all.sh` | install or update on the board, board setup (packages, model, certificate, alias, desktop icon), CLI runner, deploy from a host, full reproduction. |
 
-Not in the repository (made by the scripts): `build/`, `third_party/`, `.venv/`, `models/`, `out/` and `data/testCYWS/`.
+Not in the repository (made by the scripts): `build/`, `third_party/`, `.venv/`, `models/`, `out/`, `data/paslcd/` and `data/testCYWS/`.
 
 ## License
 
@@ -390,6 +410,7 @@ CYWS is by Ragav Sachdeva and Andrew Zisserman (The Change You Want to See, WACV
 - **DINOv2:** its code and pretrained weights are by Meta Platforms, Inc. (https://github.com/facebookresearch/dinov2), under the Apache License 2.0. The compiled `dinov2-448` model is derived from those weights and is Apache-2.0 too; it is on [Hugging Face](https://huggingface.co/dotimothy/sima-dinov2).
 - **C-3PO:** its code and pretrained weights are by Guo-Hua Wang et al. (https://github.com/DoctorKey/C-3PO), under the MIT License. The compiled `c3po-pcd` and `c3po-csb` models are derived from those weights and are MIT too; they are not in this repository or on Hugging Face.
 - **This repository's code** is Apache-2.0.
+- **Test pairs:** the photos and change masks in `data/paslcd` are from PASLCD by Chamuditha Jayanga Galappaththige et al. (https://huggingface.co/datasets/ChamudithaJay/PASLCD), under the MIT License; `data/fetch_paslcd.py` writes its notice next to them.
 - **Fonts:** Inter and JetBrains Mono, in the web demo, are under the SIL Open Font License 1.1.
 - **Trademarks:** SiMa.ai, Modalix, Neat and the logos in `webapp/web/assets` are trademarks of SiMa.ai and are not covered by the Apache License.
 
